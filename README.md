@@ -62,3 +62,42 @@ Quick check from terminal:
 ```bash
 curl http://127.0.0.1:8000/
 ```
+
+## Docker
+
+Build the image:
+
+```bash
+docker build -t jussi-aibot .
+```
+
+Run locally (maps host 8000 to container 8080):
+
+```bash
+docker run --rm -p 8000:8080 jussi-aibot
+```
+
+Or with Compose:
+
+```bash
+docker compose up --build
+```
+
+Hot reload with Compose (auto-restart on code changes):
+
+```bash
+docker compose up --build
+```
+
+When you edit a `.py` file, Uvicorn reloads the app. Refresh the browser to see changes.
+
+## Google Cloud Run
+
+Deploy from source (Cloud Run builds the image and sets `PORT`):
+
+```bash
+gcloud run deploy jussi-aibot \
+	--source . \
+	--region YOUR_REGION \
+	--allow-unauthenticated
+```
