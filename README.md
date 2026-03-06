@@ -35,6 +35,18 @@ Start the FastAPI development server:
 uvicorn main:app --reload
 ```
 
+Or use the project launcher script (recommended):
+
+```bash
+./run.sh
+```
+
+Optional custom host/port:
+
+```bash
+HOST=127.0.0.1 PORT=8001 ./run.sh
+```
+
 Server will start at:
 
 - `http://127.0.0.1:8000`
