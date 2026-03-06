@@ -1,4 +1,4 @@
-# jussi-aibot
+# Jussi AI-BOT: A FastAPI Service in Python
 
 Minimal FastAPI app with a root route.
 
