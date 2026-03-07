@@ -116,7 +116,7 @@ router = APIRouter()
 @router.get("/")
 async def root() -> dict[str, str]:
     """Root endpoint."""
-    return {"message": "Hello World from Python and FastAPI!"}
+    return {"message": "Hello World from Python and FastAPI! Today is a great day to review some resumes!"}
 
 
 @router.get("/robots.txt")
