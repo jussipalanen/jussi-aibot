@@ -134,6 +134,13 @@ Upload your resume, and the AI agent will:
 
 **Provider Selection**: Choose between `default` (local TurkuNLP model) or `puter_ai` (cloud-based AI). Specify via `provider` parameter or use `DEFAULT_PROVIDER` environment variable.
 
+**Puter-only mode (recommended for Cloud Run):** Disable local model downloads to avoid Hugging Face rate limits.
+
+```bash
+DEFAULT_PROVIDER=puter_ai
+DISABLE_LOCAL_MODEL=true
+```
+
 ### Rating Scale (0-5 stars)
 
 | Stars | Rating |

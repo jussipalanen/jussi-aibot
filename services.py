@@ -2,6 +2,7 @@
 Service functions for resume text extraction and analysis.
 """
 from fastapi import HTTPException, status
+from functools import lru_cache
 import io
 import json
 import os
@@ -12,7 +13,22 @@ import tempfile
 import pdfplumber
 from docx import Document
 
-from model import model, tokenizer, device
+def _local_model_disabled() -> bool:
+    value = os.getenv("DISABLE_LOCAL_MODEL", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+@lru_cache(maxsize=1)
+def _get_local_model():
+    if _local_model_disabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Local model is disabled. Use provider=puter_ai instead."
+        )
+
+    # Lazy import to avoid Hugging Face download at startup
+    from model import model, tokenizer, device
+    return model, tokenizer, device
 
 
 def detect_language(text: str) -> str:
@@ -26,6 +42,7 @@ def detect_language(text: str) -> str:
 
 def generate_review_default(prompt: str) -> str:
     """Generate review text with the local Finnish model."""
+    model, tokenizer, device = _get_local_model()
     encoded = tokenizer(prompt, return_tensors="pt").to(device)
     input_ids = encoded.input_ids
 

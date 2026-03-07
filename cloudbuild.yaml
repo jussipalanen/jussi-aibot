@@ -28,7 +28,8 @@ steps:
       - '--min-instances=0'
       - '--max-instances=3'
       - '--port=8080'
-      - '--set-env-vars=DAILY_RATE_LIMIT=50/day,DEFAULT_PROVIDER=default,API_KEYS=REPLACE_WITH_KEYS,API_KEY_HASHES=,PUTER_API_KEY=REPLACE_WITH_PUTER_KEY,PUTER_MODEL=gpt-4o-mini,PUTER_DRIVER=openai-completion,PUTER_PROMPT_MAX_CHARS=6000'
+      - '--set-env-vars=DAILY_RATE_LIMIT=50/day,DEFAULT_PROVIDER=puter_ai,DISABLE_LOCAL_MODEL=true,API_KEY_HASHES=,PUTER_MODEL=gpt-4o-mini,PUTER_DRIVER=openai-completion,PUTER_PROMPT_MAX_CHARS=6000'
+      - '--set-secrets=API_KEYS=API_KEYS:latest,PUTER_API_KEY=PUTER_API_KEY:latest'
     id: 'deploy-cloud-run'
 
 # Kaniko automatically pushes, no separate images section needed
