@@ -8,7 +8,6 @@ import hashlib
 import hmac
 import sys
 import platform
-import torch
 import fastapi
 import os
 
@@ -134,11 +133,17 @@ async def health() -> dict[str, str]:
 @router.get("/version")
 async def version() -> dict[str, str]:
     """Get version information."""
+    try:
+        import torch
+        torch_version = torch.__version__
+    except ImportError:
+        torch_version = "N/A (ML dependencies not installed)"
+    
     return {
         "python_version": sys.version.split()[0],
         "platform": platform.platform(),
         "fastapi_version": fastapi.__version__,
-        "torch_version": torch.__version__,
+        "torch_version": torch_version,
     }
 
 
