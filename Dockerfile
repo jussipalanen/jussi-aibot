@@ -9,6 +9,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Install system tool for legacy DOC extraction.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends antiword \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create cache dir and non-root user early to keep layers stable.
 RUN useradd -m -u 10001 appuser \
     && mkdir -p "${HF_HOME}" \
@@ -21,6 +26,9 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
 
 # Install the rest of the app dependencies.
 RUN pip install -r requirements.txt
+
+# Download spacy language model for language detection
+RUN python -m spacy download fi_core_news_sm
 
 COPY . .
 

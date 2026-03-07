@@ -63,6 +63,39 @@ Quick check from terminal:
 curl http://127.0.0.1:8000/
 ```
 
+## Resume Review API
+
+The `/ai/review` endpoint accepts an uploaded resume file and returns a JSON review.
+
+Supported file formats:
+- PDF
+- DOC, DOCS
+- DOCX
+
+Constraints:
+- Finnish-only input
+- Max upload size: 50MB
+
+Example request:
+
+```bash
+curl -F "file=@/path/to/resume.pdf" http://127.0.0.1:8000/ai/review
+```
+
+Example response schema:
+
+```json
+{
+	"rating_text": "Very good",
+	"stars": 7,
+	"parsed_text": "...",
+	"summary": "...",
+	"strengths": ["..."],
+	"weaknesses": ["..."],
+	"cached": false
+}
+```
+
 ## Docker
 
 Build the image:
