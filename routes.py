@@ -39,6 +39,13 @@ API_KEY_HASHES = {
 }
 REQUIRE_API_KEY = bool(API_KEYS or API_KEY_HASHES)
 
+# Allowed origins for API key bypass (for frontend clients)
+ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+}
+
 # Validate DEFAULT_PROVIDER at startup
 if DEFAULT_PROVIDER not in SUPPORTED_PROVIDERS:
     raise ValueError(
@@ -53,6 +60,24 @@ limiter = Limiter(key_func=get_remote_address)
 def verify_api_key(request: Request) -> None:
     if not REQUIRE_API_KEY:
         return
+
+    # Check if request is from an allowed origin (frontend bypass)
+    if ALLOWED_ORIGINS:
+        origin = request.headers.get("origin") or request.headers.get("referer", "")
+        if origin:
+            # Normalize origin by removing trailing slash and path
+            origin_normalized = origin.rstrip("/").split("?")[0]
+            # For referer, extract just the origin part (scheme + host + port)
+            if "referer" in request.headers and not "origin" in request.headers:
+                from urllib.parse import urlparse
+                parsed = urlparse(origin_normalized)
+                origin_normalized = f"{parsed.scheme}://{parsed.netloc}"
+            
+            # Check against allowed origins
+            for allowed in ALLOWED_ORIGINS:
+                allowed_normalized = allowed.rstrip("/")
+                if origin_normalized == allowed_normalized or origin_normalized.startswith(allowed_normalized + "/"):
+                    return  # Allow access without API key for allowed origins
 
     api_key = request.headers.get("x-api-key")
     if not api_key:

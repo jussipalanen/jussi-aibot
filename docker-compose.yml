@@ -11,6 +11,7 @@ services:
       DEFAULT_PROVIDER: ${DEFAULT_PROVIDER:-default}
       API_KEYS: ${API_KEYS:-}
       API_KEY_HASHES: ${API_KEY_HASHES:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       PUTER_API_KEY: ${PUTER_API_KEY:-}
       PUTER_MODEL: ${PUTER_MODEL:-gpt-4o-mini}
       PUTER_DRIVER: ${PUTER_DRIVER:-openai-completion}

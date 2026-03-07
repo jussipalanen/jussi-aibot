@@ -1,6 +1,38 @@
-# Jussi AI-BOT: A FastAPI Service in Python
+# Jussi AI-BOT: AI-Powered Resume Review Service
 
-Minimal FastAPI app with a root route.
+An intelligent FastAPI service that uses AI to analyze and review resumes. Upload your resume and get instant feedback with ratings, strengths, weaknesses, and actionable improvements.
+
+**✨ More AI features coming soon!**
+
+## Key Features
+
+- 🤖 **AI-Powered Analysis**: Advanced machine learning models review your resume
+- ⭐ **Smart Ratings**: Get a 0-5 star rating with detailed explanations
+- 💪 **Strengths & Weaknesses**: Identify what works and what needs improvement
+- 🇫🇮 **Finnish Language Support**: Optimized for Finnish resumes and feedback
+- 🚀 **Multiple AI Providers**: Choose between local models or cloud-based AI (Puter AI)
+- 🔒 **Secure & Private**: Origin-based access control for frontend applications
+- ⚡ **Rate Limited**: Fair usage policies to prevent abuse
+- 📄 **Multiple Formats**: Supports PDF, DOC, and DOCX files
+
+## Quick Start
+
+```bash
+# 1. Clone and setup
+git clone https://github.com/jussipalanen/jussi-aibot.git
+cd jussi-aibot
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# 2. Start the server
+./run.sh
+
+# 3. Test the AI review (upload your resume)
+curl -F "file=@your-resume.pdf" http://127.0.0.1:8000/ai/review
+```
+
+Visit `http://127.0.0.1:8000/docs` for interactive API documentation.
 
 ## Prerequisites
 
@@ -53,33 +85,56 @@ Server will start at:
 
 ## Verify
 
-- Root endpoint: `http://127.0.0.1:8000/`
-- Swagger UI docs: `http://127.0.0.1:8000/docs`
-- ReDoc docs: `http://127.0.0.1:8000/redoc`
+Test the API endpoints:
 
-Quick check from terminal:
+- Root endpoint: `http://127.0.0.1:8000/`
+- **Swagger UI docs (Interactive API)**: `http://127.0.0.1:8000/docs` 
+- ReDoc docs: `http://127.0.0.1:8000/redoc`
+- Health check: `http://127.0.0.1:8000/health`
+
+Quick health check from terminal:
 
 ```bash
 curl http://127.0.0.1:8000/
 ```
 
-## Resume Review API
+## AI-Powered Resume Review
 
-The `/ai/review` endpoint accepts an uploaded resume file and returns a JSON review.
+The `/ai/review` endpoint uses advanced AI models to analyze your resume and provide comprehensive feedback.
 
-Supported file formats:
+### What You Get
+
+📊 **Intelligent Analysis:**
+- **Rating (0-5 stars)**: Overall assessment of your resume quality
+- **Detailed Summary**: Comprehensive review in Finnish
+- **Strengths**: What makes your resume stand out
+- **Weaknesses**: Areas that need improvement
+- **Actionable Feedback**: Specific suggestions to enhance your resume
+
+### How It Works
+
+Upload your resume, and the AI agent will:
+1. Extract and analyze the content
+2. Evaluate structure, clarity, and presentation
+3. Assess experience and qualifications
+4. Generate personalized feedback with ratings
+
+**✨ More AI features coming soon!**
+
+### Supported Formats
 - PDF
-- DOC, DOCS
-- DOCX
+- DOC, DOCS, DOCX
 
-Constraints:
-- Finnish-only input (the review works only for Finnish resumes)
-- Max upload size: 50MB
-- **Rate limit: 50 requests per day per IP address** (configurable via `DAILY_RATE_LIMIT` env var)
-- **API key required** when `API_KEYS` is set (recommended for production)
-- **Provider parameter optional in form-data:** `provider=default` or `provider=puter_ai` (uses `DEFAULT_PROVIDER` env var if not specified)
+### Usage Constraints
 
-Rating scale (0-5):
+- 🇫🇮 **Language**: Optimized for Finnish resumes (Finnish feedback)
+- 📦 **File Size**: Maximum 50MB per upload
+- ⏱️ **Rate Limit**: 50 requests per day per IP (configurable)
+- 🔑 **Authentication**: API key or origin-based access (see security section below)
+
+**Provider Selection**: Choose between `default` (local TurkuNLP model) or `puter_ai` (cloud-based AI). Specify via `provider` parameter or use `DEFAULT_PROVIDER` environment variable.
+
+### Rating Scale (0-5 stars)
 
 | Stars | Rating |
 | --- | --- |
@@ -90,29 +145,40 @@ Rating scale (0-5):
 | 1 | Heikko |
 | 0 | Huono |
 
-Example request:
+### Example Usage
+
+**Using default provider (local AI model):**
 
 ```bash
 curl -F "provider=default" -F "file=@/path/to/resume.pdf" http://127.0.0.1:8000/ai/review
 ```
 
-Example request (Puter AI provider):
+**Using Puter AI provider (cloud-based):**
 
 ```bash
 curl -F "provider=puter_ai" -F "file=@/path/to/resume.pdf" http://127.0.0.1:8000/ai/review
 ```
 
-Example response schema:
+### AI Response Format
+
+The API returns a comprehensive JSON response with AI-generated insights:
 
 ```json
 {
 	"provider": "puter_ai",
 	"rating_text": "Erittäin hyvä",
 	"stars": 4,
-	"summary": "...",
+	"summary": "Comprehensive AI-generated analysis of your resume...",
 	"provider_raw_output": "...",
-	"strengths": ["..."],
-	"weaknesses": ["..."]
+	"strengths": [
+		"Clear and professional presentation",
+		"Strong technical skills highlighted",
+		"Good work experience progression"
+	],
+	"weaknesses": [
+		"Could benefit from quantifiable achievements",
+		"Education section needs more detail"
+	]
 }
 ```
 
@@ -225,6 +291,81 @@ X-API-Key: key1
 
 If `API_KEYS` is not set, the endpoint remains open (useful for local dev).
 
+## Origin-Based Access Control (Frontend Security)
+
+**Problem:** When frontend applications (browsers) call the API with `X-API-Key` header, the key is visible in browser developer tools, exposing it to potential attackers.
+
+**Solution:** Configure allowed origins so frontend clients from trusted domains can access the API without sending the API key header.
+
+### Configuration
+
+Set `ALLOWED_ORIGINS` environment variable with comma-separated list of allowed frontend origins:
+
+```bash
+export ALLOWED_ORIGINS="http://localhost:3000,https://yourdomain.com,https://app.yourdomain.com"
+```
+
+**Local development (.env):**
+```bash
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+```
+
+**Docker Compose:**
+Update `docker-compose.yml`:
+```yaml
+environment:
+  ALLOWED_ORIGINS: "https://yourdomain.com,https://app.yourdomain.com"
+```
+
+**Cloud Run:**
+```bash
+gcloud run services update jussi-aibot \
+  --set-env-vars=ALLOWED_ORIGINS="https://yourdomain.com,https://app.yourdomain.com" \
+  --region=YOUR_REGION
+```
+
+### How It Works
+
+1. **Browser requests from allowed origins**: Automatically allowed without `X-API-Key` header
+2. **Backend/server requests**: Must include valid `X-API-Key` header
+3. **Requests from non-allowed origins**: Must include valid `X-API-Key` header
+
+The service checks the `Origin` or `Referer` header of incoming requests. If it matches an entry in `ALLOWED_ORIGINS`, the API key check is bypassed.
+
+### Security Notes
+
+- **Origin header cannot be spoofed by browsers** due to browser security policies
+- **Non-browser clients** (curl, Postman, backend services) can spoof the Origin header, so they should still use API keys
+- **Rate limiting still applies** to all requests regardless of origin
+- **CORS is automatically configured** for allowed origins when `ALLOWED_ORIGINS` is set
+- Leave `ALLOWED_ORIGINS` empty to require API key for all requests (maximum security)
+
+### Example Requests
+
+**From allowed frontend (no API key needed):**
+```javascript
+// Browser automatically sends Origin header
+fetch('https://your-api.com/ai/review', {
+  method: 'POST',
+  body: formData
+})
+```
+
+**From backend service (API key required):**
+```bash
+curl -H "X-API-Key: your-secret-key" \
+  -F "file=@resume.pdf" \
+  https://your-api.com/ai/review
+```
+
+**Testing with curl (simulating browser origin):**
+```bash
+# This works only for allowed origins
+curl -H "Origin: http://localhost:3000" \
+  -F "file=@resume.pdf" \
+  http://127.0.0.1:8000/ai/review
+```
+
 ## Provider Selection (`default` vs `puter_ai`)
 
 The `/ai/review` endpoint supports two providers via multipart form field `provider`:
@@ -265,7 +406,7 @@ Postman setup for `/ai/review`:
 	- `provider` = `default` or `puter_ai`
 	- `file` = your resume file (type `File`)
 - Header:
-	- `X-API-Key: <your_key>` (if API key protection enabled)
+	- `X-API-Key: <your_key>` (required unless your origin is in `ALLOWED_ORIGINS`)
 
 ## Google Cloud Run
 
