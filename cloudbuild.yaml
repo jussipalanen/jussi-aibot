@@ -33,12 +33,6 @@ steps:
       - '--set-secrets=API_KEYS=API_KEYS:latest,PUTER_API_KEY=PUTER_API_KEY:latest'
     id: 'deploy-cloud-run'
 
-# Kaniko automatically pushes, no separate images section needed
-# But including for visibility in Cloud Build UI
-images:
-  - 'europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:$COMMIT_SHA'
-  - 'europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:latest'
-
 # Build configuration - optimized for cost
 options:
   machineType: 'E2_MEDIUM'  # Cheaper builds, slower but low-cost
