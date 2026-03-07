@@ -8,6 +8,7 @@ services:
       PORT: ${PORT:-8080}
       HF_HOME: ${HF_HOME:-/opt/hf-cache}
       DAILY_RATE_LIMIT: ${DAILY_RATE_LIMIT:-50/day}
+      DEFAULT_PROVIDER: ${DEFAULT_PROVIDER:-default}
       API_KEYS: ${API_KEYS:-}
       API_KEY_HASHES: ${API_KEY_HASHES:-}
       PUTER_API_KEY: ${PUTER_API_KEY:-}

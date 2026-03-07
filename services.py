@@ -111,9 +111,16 @@ def _extract_puter_text(response: object) -> str:
     if isinstance(content, str):
         return content.strip()
 
+    # Debug: log the response structure
+    import json
+    try:
+        response_debug = json.dumps(response, default=str, indent=2)
+    except:
+        response_debug = str(response)
+    
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
-        detail="Puter AI returned an unreadable response."
+        detail=f"Puter AI returned an unreadable response. Response structure: {response_debug[:500]}"
     )
 
 

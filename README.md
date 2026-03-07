@@ -177,6 +177,13 @@ gcloud run services update jussi-aibot-production \
   --region=europe-north1
 ```
 
+**Update default provider (Cloud Run):**
+```bash
+gcloud run services update jussi-aibot-production \
+  --set-env-vars=DEFAULT_PROVIDER=puter_ai \
+  --region=europe-north1
+```
+
 **Rate limit exceeded response:**
 When a client exceeds the rate limit, they receive a `429 Too Many Requests` error with details about when they can retry.
 
