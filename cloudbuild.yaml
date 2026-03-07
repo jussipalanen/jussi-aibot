@@ -1,0 +1,45 @@
+steps:
+  # Build with Kaniko (better layer caching, faster, cheaper)
+  - name: 'gcr.io/kaniko-project/executor:latest'
+    args:
+      - '--destination=europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:$COMMIT_SHA'
+      - '--destination=europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:latest'
+      - '--cache=true'
+      - '--cache-ttl=168h'  # Cache for 7 days
+      - '--compressed-caching=false'  # Faster cache writes
+      - '--snapshot-mode=redo'  # Faster layer detection
+      - '--use-new-run=true'  # Better RUN caching
+    id: 'build-and-push-image'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'jussi-aibot-production'
+      - '--image=europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:$COMMIT_SHA'
+      - '--region=europe-north1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=2Gi'
+      - '--cpu=1'
+      - '--timeout=300s'
+      - '--min-instances=0'
+      - '--max-instances=10'
+      - '--port=8080'
+      - '--set-env-vars=DAILY_RATE_LIMIT=50/day,API_KEYS=REPLACE_WITH_KEYS,API_KEY_HASHES='
+    id: 'deploy-cloud-run'
+
+# Kaniko automatically pushes, no separate images section needed
+# But including for visibility in Cloud Build UI
+images:
+  - 'europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:$COMMIT_SHA'
+  - 'europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:latest'
+
+# Build configuration - optimized for cost
+options:
+  machineType: 'E2_MEDIUM'  # Cheaper builds, slower but low-cost
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1800s'

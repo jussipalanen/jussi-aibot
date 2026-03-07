@@ -9,3 +9,6 @@ venv/
 # Editor/OS files
 .vscode/
 .DS_Store
+
+# Local environment files
+.env

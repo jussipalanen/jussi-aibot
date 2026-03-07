@@ -5,8 +5,11 @@ services:
     ports:
       - "8000:8080"
     environment:
-      PORT: 8080
-      HF_HOME: /opt/hf-cache
+      PORT: ${PORT:-8080}
+      HF_HOME: ${HF_HOME:-/opt/hf-cache}
+      DAILY_RATE_LIMIT: ${DAILY_RATE_LIMIT:-50/day}
+      API_KEYS: ${API_KEYS:-}
+      API_KEY_HASHES: ${API_KEY_HASHES:-}
     volumes:
       - .:/app
       - hf_cache:/opt/hf-cache
