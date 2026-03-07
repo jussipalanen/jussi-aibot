@@ -1,10 +1,7 @@
 fastapi==0.135.1
 python-multipart==0.0.12
 uvicorn==0.38.0
-transformers==4.46.3
-sentencepiece>=0.1.99
 pdfplumber==0.11.4
 python-docx==1.1.2
-accelerate>=0.26.0
 slowapi==0.1.9
 puter==0.0.13

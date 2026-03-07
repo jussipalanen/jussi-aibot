@@ -9,6 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+ARG INCLUDE_ML_DEPS=0
+
 # Install system tool for legacy DOC extraction.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends antiword \
@@ -20,12 +22,16 @@ RUN useradd -m -u 10001 appuser \
     && chown -R appuser:appuser /app "${HF_HOME}"
 
 COPY requirements.txt ./requirements.txt
+COPY requirements-ml.txt ./requirements-ml.txt
 
-# Install heavy torch dependency in its own layer for better reuse.
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
-
-# Install the rest of the app dependencies.
+# Install the core app dependencies (small by default).
 RUN pip install -r requirements.txt
+
+# Optional ML dependencies to reduce default image size and build time.
+RUN if [ "$INCLUDE_ML_DEPS" = "1" ]; then \
+            pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 && \
+            pip install -r requirements-ml.txt; \
+        fi
 
 COPY . .
 

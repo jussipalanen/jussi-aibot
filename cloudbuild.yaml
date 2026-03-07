@@ -4,6 +4,7 @@ steps:
     args:
       - '--destination=europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:$COMMIT_SHA'
       - '--destination=europe-north1-docker.pkg.dev/$PROJECT_ID/jussi-aibot/jussi-aibot:latest'
+      - '--build-arg=INCLUDE_ML_DEPS=${_INCLUDE_ML_DEPS}'
       - '--cache=true'
       - '--cache-ttl=168h'  # Cache for 7 days
       - '--compressed-caching=false'  # Faster cache writes
@@ -42,5 +43,8 @@ images:
 options:
   machineType: 'E2_MEDIUM'  # Cheaper builds, slower but low-cost
   logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _INCLUDE_ML_DEPS: '0'
 
 timeout: '1800s'
