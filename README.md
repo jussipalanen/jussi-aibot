@@ -73,8 +73,19 @@ Supported file formats:
 - DOCX
 
 Constraints:
-- Finnish-only input
+- Finnish-only input (the review works only for Finnish resumes)
 - Max upload size: 50MB
+
+Rating scale (0-5):
+
+| Stars | Rating |
+| --- | --- |
+| 5 | Erinomainen |
+| 4 | Erittäin hyvä |
+| 3 | Hyvä |
+| 2 | Tyydyttävä |
+| 1 | Heikko |
+| 0 | Huono |
 
 Example request:
 
@@ -86,13 +97,11 @@ Example response schema:
 
 ```json
 {
-	"rating_text": "Very good",
-	"stars": 7,
-	"parsed_text": "...",
+	"rating_text": "Erittäin hyvä",
+	"stars": 4,
 	"summary": "...",
 	"strengths": ["..."],
-	"weaknesses": ["..."],
-	"cached": false
+	"weaknesses": ["..."]
 }
 ```
 
