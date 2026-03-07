@@ -1,7 +1,7 @@
 """
 API routes for Jussi AI Bot.
 """
-from fastapi import APIRouter, File, UploadFile, HTTPException, status, Request, Response
+from fastapi import APIRouter, File, UploadFile, HTTPException, status, Request, Response, Form
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import hashlib
@@ -15,14 +15,18 @@ import os
 from services import (
     extract_resume_text,
     normalize_whitespace,
-    build_review_response
+    build_review_response,
+    generate_review_default,
+    generate_review_puter_ai
 )
-from model import model, tokenizer, device
 
 # Constants
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docs", ".docx"}
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+SUPPORTED_PROVIDERS = {"default", "puter_ai"}
+DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "default").strip().lower()  # Configurable via env var
 DAILY_RATE_LIMIT = os.getenv("DAILY_RATE_LIMIT", "50/day")  # Configurable via env var
+PUTER_PROMPT_MAX_CHARS = int(os.getenv("PUTER_PROMPT_MAX_CHARS", "6000"))
 API_KEYS = {
     key.strip()
     for key in os.getenv("API_KEYS", "").split(",")
@@ -34,6 +38,13 @@ API_KEY_HASHES = {
     if key.strip()
 }
 REQUIRE_API_KEY = bool(API_KEYS or API_KEY_HASHES)
+
+# Validate DEFAULT_PROVIDER at startup
+if DEFAULT_PROVIDER not in SUPPORTED_PROVIDERS:
+    raise ValueError(
+        f"Invalid DEFAULT_PROVIDER '{DEFAULT_PROVIDER}'. "
+        f"Must be one of: {', '.join(SUPPORTED_PROVIDERS)}"
+    )
 
 # Rate limiter setup
 limiter = Limiter(key_func=get_remote_address)
@@ -108,12 +119,29 @@ async def version() -> dict[str, str]:
 
 @router.post("/ai/review")
 @limiter.limit(DAILY_RATE_LIMIT)
-async def ai_review(request: Request, file: UploadFile = File(...)) -> dict:
+async def ai_review(
+    request: Request,
+    provider: str = Form(None),
+    file: UploadFile = File(...)
+) -> dict:
     """
     Review a resume file and provide analysis with ratings.
-    Supports PDF, DOC, and DOCX formats.
+    Supports PDF, DOC, and DOCX formats and provider selection.
     """
     verify_api_key(request)
+    
+    # Use environment variable if provider not provided
+    if provider is None or provider.strip() == "":
+        provider = DEFAULT_PROVIDER
+    else:
+        provider = provider.strip().lower()
+    
+    if provider not in SUPPORTED_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid provider. Use 'default' or 'puter_ai'."
+        )
+
     # Validate file input and size limits
     if not file.filename:
         raise HTTPException(
@@ -142,29 +170,18 @@ async def ai_review(request: Request, file: UploadFile = File(...)) -> dict:
             detail="No text could be extracted from the uploaded file."
         )
 
-    # Generate review using AI model
-    prompt = REVIEW_PROMPT_TEMPLATE.format(resume_text=parsed_text)
-    encoded = tokenizer(prompt, return_tensors="pt").to(device)
-    input_ids = encoded.input_ids
+    # Generate review with selected provider
+    prompt_text = parsed_text
+    if provider == "puter_ai" and PUTER_PROMPT_MAX_CHARS > 0:
+        prompt_text = parsed_text[:PUTER_PROMPT_MAX_CHARS]
 
-    outputs = model.generate(
-        input_ids,
-        max_new_tokens=300,
-        temperature=0.8,
-        top_p=0.92,
-        do_sample=True,
-        repetition_penalty=1.1,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id
-    )
-
-    generated_ids = outputs[0]
-    new_tokens = generated_ids[input_ids.shape[-1]:]
-    if new_tokens.numel() == 0:
-        new_tokens = generated_ids
-    model_output = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+    prompt = REVIEW_PROMPT_TEMPLATE.format(resume_text=prompt_text)
+    if provider == "puter_ai":
+        model_output = generate_review_puter_ai(prompt)
+    else:
+        model_output = generate_review_default(prompt)
 
     # Build response
-    response = build_review_response(parsed_text, model_output)
+    response = build_review_response(parsed_text, model_output, provider=provider)
 
     return response

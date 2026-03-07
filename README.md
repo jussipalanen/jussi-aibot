@@ -77,6 +77,7 @@ Constraints:
 - Max upload size: 50MB
 - **Rate limit: 50 requests per day per IP address** (configurable via `DAILY_RATE_LIMIT` env var)
 - **API key required** when `API_KEYS` is set (recommended for production)
+- **Provider parameter optional in form-data:** `provider=default` or `provider=puter_ai` (uses `DEFAULT_PROVIDER` env var if not specified)
 
 Rating scale (0-5):
 
@@ -92,16 +93,24 @@ Rating scale (0-5):
 Example request:
 
 ```bash
-curl -F "file=@/path/to/resume.pdf" http://127.0.0.1:8000/ai/review
+curl -F "provider=default" -F "file=@/path/to/resume.pdf" http://127.0.0.1:8000/ai/review
+```
+
+Example request (Puter AI provider):
+
+```bash
+curl -F "provider=puter_ai" -F "file=@/path/to/resume.pdf" http://127.0.0.1:8000/ai/review
 ```
 
 Example response schema:
 
 ```json
 {
+	"provider": "puter_ai",
 	"rating_text": "Erittäin hyvä",
 	"stars": 4,
 	"summary": "...",
+	"provider_raw_output": "...",
 	"strengths": ["..."],
 	"weaknesses": ["..."]
 }
@@ -208,6 +217,48 @@ X-API-Key: key1
 ```
 
 If `API_KEYS` is not set, the endpoint remains open (useful for local dev).
+
+## Provider Selection (`default` vs `puter_ai`)
+
+The `/ai/review` endpoint supports two providers via multipart form field `provider`:
+
+- `default`: local TurkuNLP model inside this service
+- `puter_ai`: Puter Python SDK (`ChatCompletion.create`)
+
+**Default Provider Configuration:**
+
+If the `provider` field is not specified in the request, the service uses the `DEFAULT_PROVIDER` environment variable (defaults to `default`):
+
+```bash
+DEFAULT_PROVIDER=default  # or puter_ai
+```
+
+If `provider=puter_ai` and Puter is not configured or fails, the API returns an error. It does **not** fall back to `default` automatically.
+
+Required env vars for Puter provider:
+
+```bash
+PUTER_API_KEY=your_puter_key
+PUTER_MODEL=gpt-4o-mini
+PUTER_DRIVER=openai-completion
+PUTER_PROMPT_MAX_CHARS=6000
+```
+
+Latency tuning for `puter_ai`:
+
+- Lower `PUTER_PROMPT_MAX_CHARS` to reduce input size sent to Puter (faster, less context).
+- Recommended range: `3000` to `6000` characters.
+- Set `PUTER_PROMPT_MAX_CHARS=0` to disable truncation.
+
+Postman setup for `/ai/review`:
+
+- Method: `POST`
+- Body: `form-data`
+- Form fields:
+	- `provider` = `default` or `puter_ai`
+	- `file` = your resume file (type `File`)
+- Header:
+	- `X-API-Key: <your_key>` (if API key protection enabled)
 
 ## Google Cloud Run
 

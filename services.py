@@ -12,6 +12,8 @@ import tempfile
 import pdfplumber
 from docx import Document
 
+from model import model, tokenizer, device
+
 
 def detect_language(text: str) -> str:
     """
@@ -20,6 +22,135 @@ def detect_language(text: str) -> str:
     """
     # Only Finnish language is supported
     return "fi"
+
+
+def generate_review_default(prompt: str) -> str:
+    """Generate review text with the local Finnish model."""
+    encoded = tokenizer(prompt, return_tensors="pt").to(device)
+    input_ids = encoded.input_ids
+
+    outputs = model.generate(
+        input_ids,
+        max_new_tokens=300,
+        temperature=0.8,
+        top_p=0.92,
+        do_sample=True,
+        repetition_penalty=1.1,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id
+    )
+
+    generated_ids = outputs[0]
+    new_tokens = generated_ids[input_ids.shape[-1]:]
+    if new_tokens.numel() == 0:
+        new_tokens = generated_ids
+
+    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+
+def _extract_puter_text(response: object) -> str:
+    """Extract text from Puter response shape safely."""
+    if isinstance(response, str):
+        return response.strip()
+
+    if isinstance(response, dict):
+        # Puter SDK common shape:
+        # {"success": true, "result": {"message": {"content": "..."}}}
+        result = response.get("result")
+        if isinstance(result, dict):
+            message = result.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str):
+                    return content.strip()
+
+        # Surface explicit provider error payloads when present.
+        if response.get("success") is False:
+            error_msg = response.get("error") or response.get("message")
+            if isinstance(error_msg, str) and error_msg.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Puter AI request failed: {error_msg.strip()}"
+                )
+
+        choices = response.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                message = first.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str):
+                        return content.strip()
+                text = first.get("text")
+                if isinstance(text, str):
+                    return text.strip()
+
+        message = response.get("message")
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, str):
+                return content.strip()
+        content = response.get("content")
+        if isinstance(content, str):
+            return content.strip()
+
+    choices = getattr(response, "choices", None)
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        message = getattr(first, "message", None)
+        if message is not None:
+            content = getattr(message, "content", None)
+            if isinstance(content, str):
+                return content.strip()
+        text = getattr(first, "text", None)
+        if isinstance(text, str):
+            return text.strip()
+
+    content = getattr(response, "content", None)
+    if isinstance(content, str):
+        return content.strip()
+
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Puter AI returned an unreadable response."
+    )
+
+
+def generate_review_puter_ai(prompt: str) -> str:
+    """Generate review text with Puter AI SDK."""
+    api_key = os.getenv("PUTER_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Puter AI is not configured. Missing PUTER_API_KEY."
+        )
+
+    model_name = os.getenv("PUTER_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    driver = os.getenv("PUTER_DRIVER", "openai-completion").strip() or "openai-completion"
+
+    try:
+        from puter import ChatCompletion
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Puter AI SDK is not installed."
+        ) from exc
+
+    try:
+        response = ChatCompletion.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=model_name,
+            driver=driver,
+            api_key=api_key
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Puter AI request failed: {exc}"
+        ) from exc
+
+    return _extract_puter_text(response)
 
 
 def map_rating_text(stars: int) -> str:
@@ -51,6 +182,71 @@ def extract_json_from_text(text: str) -> dict | None:
 def normalize_whitespace(text: str) -> str:
     """Normalize whitespace for stable prompts and cache keys."""
     return re.sub(r"\s+", " ", text).strip()
+
+
+def beautify_provider_output(text: str) -> str:
+    """
+    Clean and beautify provider raw output for display.
+    - Removes markdown formatting
+    - Converts escape sequences to readable text
+    - Ensures proper capitalization
+    - Removes special characters
+    """
+    if not text:
+        return text
+    
+    # Remove markdown bold/italic markers
+    cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    cleaned = re.sub(r'\*([^*]+)\*', r'\1', cleaned)
+    
+    # Remove markdown headers
+    cleaned = re.sub(r'^#+\s+', '', cleaned, flags=re.MULTILINE)
+    
+    # Convert newlines to proper spacing (double newlines become paragraph breaks)
+    cleaned = cleaned.replace('\\n\\n', '\n\n')
+    cleaned = cleaned.replace('\\n', ' ')
+    cleaned = cleaned.replace('\n\n', '\n\n')
+    cleaned = cleaned.replace('\n', ' ')
+    
+    # Remove multiple spaces
+    cleaned = re.sub(r' +', ' ', cleaned)
+    
+    # Remove leading/trailing whitespace
+    cleaned = cleaned.strip()
+    
+    # Ensure first letter is uppercase
+    if cleaned and cleaned[0].islower():
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    
+    return cleaned
+
+
+def _format_default_provider_output(
+    model_output: str,
+    summary: str,
+    strengths: list[str],
+    weaknesses: list[str],
+    rating_text: str,
+    stars: int
+) -> str:
+    """Return a readable detailed output for the local model provider."""
+    cleaned = normalize_whitespace(model_output)
+
+    # Keep a meaningful cleaned version when the model output is usable.
+    looks_usable = len(cleaned) >= 80 and not cleaned.startswith("{")
+    if looks_usable:
+        return cleaned[:1200]
+
+    # Fallback to a deterministic, detailed text when generation is noisy.
+    strengths_text = "; ".join(strengths) if strengths else "Ei havaittuja vahvuuksia"
+    weaknesses_text = "; ".join(weaknesses) if weaknesses else "Ei havaittuja kehityskohteita"
+
+    return (
+        f"Arvioinnin yhteenveto: {summary} "
+        f"Kokonaisarvosana: {rating_text} ({stars}/5). "
+        f"Vahvuudet: {strengths_text}. "
+        f"Kehityskohteet: {weaknesses_text}."
+    )
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -240,7 +436,7 @@ def format_summary_by_rating(rating_text: str, base_summary: str) -> str:
     return f"{base_summary} {rating_note}"
 
 
-def build_review_response(parsed_text: str, model_output: str) -> dict:
+def build_review_response(parsed_text: str, model_output: str, provider: str = "default") -> dict:
     """Build response from model output with heuristic fallback."""
     # Try to extract JSON first
     parsed = extract_json_from_text(model_output) or {}
@@ -272,10 +468,23 @@ def build_review_response(parsed_text: str, model_output: str) -> dict:
 
     summary = format_summary_by_rating(rating_text, summary)
 
+    provider_raw_output = model_output
+    if provider == "default":
+        provider_raw_output = _format_default_provider_output(
+            model_output=model_output,
+            summary=summary,
+            strengths=strengths,
+            weaknesses=weaknesses,
+            rating_text=rating_text,
+            stars=stars
+        )
+
     return {
+        "provider": provider,
         "rating_text": rating_text,
         "stars": stars,
         "summary": summary,
+        "provider_raw_output": provider_raw_output,
         "strengths": strengths,
         "weaknesses": weaknesses
     }
