@@ -2,8 +2,6 @@
 
 An intelligent FastAPI service that uses AI to analyze and review resumes. Upload your resume and get instant feedback with ratings, strengths, weaknesses, and actionable improvements.
 
-**✨ More AI features coming soon!**
-
 ## Key Features
 
 - 🤖 **AI-Powered Analysis**: Advanced machine learning models review your resume
@@ -14,6 +12,7 @@ An intelligent FastAPI service that uses AI to analyze and review resumes. Uploa
 - 🔒 **Secure & Private**: Origin-based access control for frontend applications
 - ⚡ **Rate Limited**: Fair usage policies to prevent abuse
 - 📄 **Multiple Formats**: Supports PDF, DOC, and DOCX files
+- 🏢 **JussiSpace Agent**: Conversational agent for searching properties and checking orders
 
 ## Quick Start
 
@@ -119,8 +118,6 @@ Upload your resume, and the AI agent will:
 3. Assess experience and qualifications
 4. Generate personalized feedback with ratings
 
-**✨ More AI features coming soon!**
-
 ### Supported Formats
 - PDF
 - DOC, DOCS, DOCX
@@ -187,6 +184,73 @@ The API returns a comprehensive JSON response with AI-generated insights:
 		"Education section needs more detail"
 	]
 }
+```
+
+## JussiSpace Agent
+
+A conversational AI agent powered by Google Vertex AI (Gemini) that lets users search properties and check order status via natural language.
+
+### How It Works
+
+The agent module (`agent/`) defines tools that map to JussiSpace backend endpoints. Gemini decides which tool to call based on the user's message and handles multi-step tool calls automatically.
+
+**Available tools:**
+
+| Tool | Description |
+| --- | --- |
+| `search_properties` | Search apartments/offices by city, type, status |
+| `get_property` | Get full details of a property by ID |
+| `get_order_status` | Get status and details of a specific order |
+| `list_orders` | List orders filtered by user or status |
+
+### Setup
+
+1. Install the Vertex AI SDK (already included in `requirements.txt`):
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Authenticate with Google Cloud:
+
+```bash
+gcloud auth application-default login
+```
+
+3. Set the required environment variables in your `.env`:
+
+```bash
+JUSSISPACE_API_URL=https://your-api.com/api
+AGENT_EMAIL=agent@jussispace.internal
+AGENT_PASSWORD=your-agent-password
+GCP_PROJECT=your-gcp-project
+GCP_LOCATION=europe-west1
+```
+
+### Usage
+
+```python
+from agent.agent import ask
+
+# Language auto-detected from the message
+reply = ask("Show me available apartments in Helsinki")
+
+# Force Finnish response
+reply = ask("Näytä vapaat asunnot Helsingissä", language="fi")
+
+# Force English response
+reply = ask("Mikä on tilauksen 42 status?", language="en")
+```
+
+The `language` parameter is optional — `"fi"` for Finnish, `"en"` for English. When omitted, the agent mirrors the language of the user's message.
+
+### File Structure
+
+```
+agent/
+├── tools.py    — Gemini FunctionDeclaration definitions
+├── client.py   — HTTP client for the JussiSpace backend (handles auth)
+└── agent.py    — Vertex AI agentic loop
 ```
 
 ## Docker
@@ -373,24 +437,44 @@ curl -H "Origin: http://localhost:3000" \
   http://127.0.0.1:8000/ai/review
 ```
 
-## Provider Selection (`default` vs `puter_ai`)
+## Provider Selection
 
-The `/ai/review` endpoint supports two providers via multipart form field `provider`:
+The `/ai/review` endpoint supports three providers via the multipart form field `provider`:
 
-- `default`: local TurkuNLP model inside this service
-- `puter_ai`: Puter Python SDK (`ChatCompletion.create`)
+| Provider | Backend | Notes |
+| --- | --- | --- |
+| `default` | Local TurkuNLP GPT-3 Finnish model | Requires ML dependencies |
+| `puter_ai` | Puter AI SDK (cloud) | Requires `PUTER_API_KEY` |
+| `vertex_ai` | Google Vertex AI — Gemini | Requires GCP credentials |
 
 **Default Provider Configuration:**
 
-If the `provider` field is not specified in the request, the service uses the `DEFAULT_PROVIDER` environment variable (defaults to `default`):
+If `provider` is not specified in the request, the service uses the `DEFAULT_PROVIDER` environment variable:
 
 ```bash
-DEFAULT_PROVIDER=default  # or puter_ai
+DEFAULT_PROVIDER=vertex_ai  # default, puter_ai, or vertex_ai
 ```
 
-If `provider=puter_ai` and Puter is not configured or fails, the API returns an error. It does **not** fall back to `default` automatically.
+If the selected provider is not configured or fails, the API returns an error — it does **not** fall back to another provider automatically.
 
-Required env vars for Puter provider:
+**Vertex AI provider** (recommended):
+
+```bash
+GCP_PROJECT=your-gcp-project
+GCP_LOCATION=europe-west1
+VERTEX_MODEL=gemini-1.5-pro
+VERTEX_PROMPT_MAX_CHARS=6000
+```
+
+Authenticate locally with:
+
+```bash
+gcloud auth application-default login
+```
+
+In Cloud Run, use Workload Identity or a service account with the `Vertex AI User` role — no key file needed.
+
+**Puter AI provider:**
 
 ```bash
 PUTER_API_KEY=your_puter_key
@@ -399,18 +483,14 @@ PUTER_DRIVER=openai-completion
 PUTER_PROMPT_MAX_CHARS=6000
 ```
 
-Latency tuning for `puter_ai`:
-
-- Lower `PUTER_PROMPT_MAX_CHARS` to reduce input size sent to Puter (faster, less context).
-- Recommended range: `3000` to `6000` characters.
-- Set `PUTER_PROMPT_MAX_CHARS=0` to disable truncation.
+Latency tuning: lower `*_PROMPT_MAX_CHARS` to reduce input size (faster, less context). Set to `0` to disable truncation.
 
 Postman setup for `/ai/review`:
 
 - Method: `POST`
 - Body: `form-data`
 - Form fields:
-	- `provider` = `default` or `puter_ai`
+	- `provider` = `default`, `puter_ai`, or `vertex_ai`
 	- `file` = your resume file (type `File`)
 - Header:
 	- `X-API-Key: <your_key>` (required unless your origin is in `ALLOWED_ORIGINS`)

@@ -177,6 +177,39 @@ def generate_review_puter_ai(prompt: str) -> str:
     return _extract_puter_text(response)
 
 
+def generate_review_vertex_ai(prompt: str) -> str:
+    """Generate review text with Google Vertex AI (Gemini)."""
+    try:
+        import vertexai
+        from vertexai.generative_models import GenerativeModel
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vertex AI SDK is not installed. Run: pip install google-cloud-aiplatform"
+        ) from exc
+
+    project = os.getenv("GCP_PROJECT", "").strip()
+    location = os.getenv("GCP_LOCATION", "europe-west1").strip() or "europe-west1"
+    model_name = os.getenv("VERTEX_MODEL", "gemini-1.5-pro").strip() or "gemini-1.5-pro"
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vertex AI is not configured. Missing GCP_PROJECT."
+        )
+
+    try:
+        vertexai.init(project=project, location=location)
+        model = GenerativeModel(model_name)
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Vertex AI request failed: {exc}"
+        ) from exc
+
+
 def map_rating_text(stars: int) -> str:
     """Map numeric score to rubric text."""
     if stars >= 5:
