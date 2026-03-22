@@ -49,7 +49,7 @@ jobs:
         run: |
           bandit -r . \
             --exclude ./venv,./tests \
-            --format text \
+            --format txt \
             --severity-level medium \
             --confidence-level medium
 
