@@ -1,0 +1,137 @@
+{
+  "info": {
+    "_postman_id": "919da9e9-104c-42ba-b57a-fc78d596fabf",
+    "name": "Jussi AI Bot",
+    "description": "A simple AI bot built with FastAPI and PyTorch for Finnish resume analysis.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Root",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/",
+          "host": [
+            "http://localhost:8080"
+          ],
+          "path": []
+        },
+        "description": "Root endpoint."
+      },
+      "response": []
+    },
+    {
+      "name": "Robots Txt",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/robots.txt",
+          "host": [
+            "http://localhost:8080"
+          ],
+          "path": [
+            "robots.txt"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/health",
+          "host": [
+            "http://localhost:8080"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Health check endpoint."
+      },
+      "response": []
+    },
+    {
+      "name": "Version",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/version",
+          "host": [
+            "http://localhost:8080"
+          ],
+          "path": [
+            "version"
+          ]
+        },
+        "description": "Get version information."
+      },
+      "response": []
+    },
+    {
+      "name": "Chat",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/ai/chat",
+          "host": [
+            "http://localhost:8080"
+          ],
+          "path": [
+            "ai",
+            "chat"
+          ]
+        },
+        "description": "Conversational AI agent. Use `handler` to select the chatbot:\n- \"jussispace\" — searches properties and checks orders",
+        "body": {
+          "mode": "raw",
+          "raw": "\"\"",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Ai Review",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/ai/review",
+          "host": [
+            "http://localhost:8080"
+          ],
+          "path": [
+            "ai",
+            "review"
+          ]
+        },
+        "description": "Review a resume file and provide analysis with ratings.\nSupports PDF, DOC, and DOCX formats and provider selection.",
+        "body": {
+          "mode": "formdata",
+          "formdata": []
+        }
+      },
+      "response": []
+    }
+  ]
+}

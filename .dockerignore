@@ -10,3 +10,5 @@ venv/
 .DS_Store
 tests/
 .pytest_cache/
+postman/
+secrets/

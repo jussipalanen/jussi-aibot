@@ -12,3 +12,4 @@ venv/
 
 # Local environment files
 .env
+secrets/

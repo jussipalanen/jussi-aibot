@@ -1,7 +1,7 @@
 import os
 import requests
 
-BASE_URL = os.environ["JUSSISPACE_API_URL"]  # e.g. https://api.jussispace.com/api
+BASE_URL = os.getenv("JUSSISPACE_API_URL", "https://backend-lab-jussispace.jussialanen.com/api")
 
 
 class JussispaceClient:

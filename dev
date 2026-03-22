@@ -1,0 +1,133 @@
+#!/bin/sh
+set -eu
+
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CMD="${1:-help}"
+
+# Docker Compose helpers
+dc() {
+  docker compose -f "${PROJECT_DIR}/docker-compose.yml" "$@"
+}
+
+case "${CMD}" in
+  up)
+    dc up --build -d
+    ;;
+  down)
+    dc down
+    ;;
+  restart)
+    dc restart
+    ;;
+  logs)
+    dc logs -f "${2:-api}"
+    ;;
+  build)
+    dc build
+    ;;
+  ps)
+    dc ps
+    ;;
+  shell)
+    dc exec "${2:-api}" sh
+    ;;
+  local)
+    # Run directly with local venv (original behaviour)
+    if [ -x "${PROJECT_DIR}/venv/bin/python" ]; then
+      VENV_PYTHON="${PROJECT_DIR}/venv/bin/python"
+    elif [ -x "${PROJECT_DIR}/.venv/bin/python" ]; then
+      VENV_PYTHON="${PROJECT_DIR}/.venv/bin/python"
+    else
+      echo "Error: no venv found. Create one first:"
+      echo "  python3 -m venv venv && pip install -r requirements.txt"
+      exit 1
+    fi
+    HOST="${HOST:-127.0.0.1}"
+    PORT="${PORT:-8001}"
+    exec "${VENV_PYTHON}" -m uvicorn main:app --reload --host "${HOST}" --port "${PORT}"
+    ;;
+  set-env)
+    # Push .env values to a running Cloud Run service (no rebuild)
+    SERVICE="${2:-jussi-aibot-production}"
+    REGION="${3:-europe-north1}"
+    ENV_FILE="${PROJECT_DIR}/.env"
+
+    if [ ! -f "${ENV_FILE}" ]; then
+      echo "Error: .env file not found. Copy .env.example to .env first."
+      exit 1
+    fi
+
+    # Write a temporary Python script to parse .env safely
+    TMPSCRIPT="$(mktemp /tmp/setenv_XXXXXX.py)"
+    cat > "${TMPSCRIPT}" << 'PYEOF'
+import sys
+env_file = sys.argv[1]
+# Vars that only make sense locally (Docker mounts, local paths, secrets)
+skip = {
+    "GCP_KEY_PATH", "GOOGLE_APPLICATION_CREDENTIALS", "HF_HOME",
+    "AGENT_EMAIL", "AGENT_PASSWORD", "API_KEYS", "PUTER_API_KEY",
+}
+pairs = []
+with open(env_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, _, val = line.partition('=')
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key in skip or not val:
+            continue
+        pairs.append(f"{key}={val}")
+if pairs:
+    # Use :: as delimiter so commas/URLs in values are safe
+    print("^::^" + "::".join(pairs))
+PYEOF
+
+    ENV_STR=$(python3 "${TMPSCRIPT}" "${ENV_FILE}")
+    rm -f "${TMPSCRIPT}"
+
+    if [ -z "${ENV_STR}" ]; then
+      echo "Error: no env vars found in .env"
+      exit 1
+    fi
+
+    echo "Updating '${SERVICE}' env vars in '${REGION}'..."
+    gcloud run services update "${SERVICE}" \
+      --region="${REGION}" \
+      --set-env-vars="${ENV_STR}"
+    echo "Done."
+    ;;
+  generate-postman)
+    OUTPUT="${2:-postman/postman_collection.json}"
+    BASE_URL="${3:-http://localhost:8080}"
+    # Run inside the container where all deps are already installed
+    dc run --rm \
+      -e DEFAULT_PROVIDER=puter_ai \
+      -e DISABLE_LOCAL_MODEL=true \
+      -v "${PROJECT_DIR}:/app" \
+      --no-deps \
+      api python scripts/generate_postman.py --output "${OUTPUT}" --base-url "${BASE_URL}"
+    echo "Collection saved to: ${PROJECT_DIR}/${OUTPUT}"
+    ;;
+  help|--help|-h)
+    echo "Usage: ./dev <command> [args]"
+    echo ""
+    echo "Commands:"
+    echo "  up                          Build and start containers in background"
+    echo "  down                        Stop and remove containers"
+    echo "  restart                     Restart running containers"
+    echo "  logs [svc]                  Follow logs (default: api)"
+    echo "  build                       Rebuild images without starting"
+    echo "  ps                          Show container status"
+    echo "  shell [svc]                 Open shell in container (default: api)"
+    echo "  local                       Run locally with venv (no Docker)"
+    echo "  set-env [svc] [region]      Push .env values to Cloud Run (default: jussi-aibot-production, europe-north1)"
+    echo "  generate-postman [out] [url] Generate Postman collection (default: postman/postman_collection.json, http://localhost:8080)"
+    ;;
+  *)
+    echo "Unknown command: ${CMD}"
+    echo "Run './dev help' for usage."
+    exit 1
+    ;;
+esac

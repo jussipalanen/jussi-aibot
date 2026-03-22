@@ -2,8 +2,12 @@ services:
   api:
     build: .
     container_name: jussi-aibot-api
+    restart: unless-stopped
     ports:
       - "8080:8080"
+    env_file:
+      - path: .env
+        required: false
     environment:
       PORT: ${PORT:-8080}
       HF_HOME: ${HF_HOME:-/opt/hf-cache}
@@ -13,13 +17,28 @@ services:
       API_KEYS: ${API_KEYS:-}
       API_KEY_HASHES: ${API_KEY_HASHES:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      PUTER_API_KEY: ${PUTER_API_KEY:-}
       PUTER_MODEL: ${PUTER_MODEL:-gpt-4o-mini}
       PUTER_DRIVER: ${PUTER_DRIVER:-openai-completion}
       PUTER_PROMPT_MAX_CHARS: ${PUTER_PROMPT_MAX_CHARS:-6000}
+      GCP_PROJECT: ${GCP_PROJECT:-}
+      GCP_LOCATION: ${GCP_LOCATION:-europe-north1}
+      VERTEX_MODEL: ${VERTEX_MODEL:-gemini-2.5-flash-lite}
+      AGENT_VERTEX_MODEL: ${AGENT_VERTEX_MODEL:-gemini-2.5-flash-lite}
+      JUSSISPACE_VERTEX_MODEL: ${JUSSISPACE_VERTEX_MODEL:-}
+      JUSSIMATIC_CV_VERTEX_MODEL: ${JUSSIMATIC_CV_VERTEX_MODEL:-}
+      AGENT_GCP_LOCATION: ${AGENT_GCP_LOCATION:-europe-north1}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+      JUSSISPACE_API_URL: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}
+      JUSSIMATIC_CV_API_URL: ${JUSSIMATIC_CV_API_URL:-}
+      AGENT_EMAIL: ${AGENT_EMAIL:-}
+      AGENT_PASSWORD: ${AGENT_PASSWORD:-}
     volumes:
       - .:/app
       - hf_cache:/opt/hf-cache
+      # Mount GCP service account key when using Vertex AI locally.
+      # Set GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json in .env
+      # and place your key file at the path specified in GCP_KEY_PATH.
+      - ${GCP_KEY_PATH:-/dev/null}:/secrets/gcp-key.json:ro
     command: python -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
 
 volumes:

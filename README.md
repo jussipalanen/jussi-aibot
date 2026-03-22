@@ -14,87 +14,86 @@ An intelligent FastAPI service that uses AI to analyze and review resumes. Uploa
 - 📄 **Multiple Formats**: Supports PDF, DOC, and DOCX files
 - 🏢 **JussiSpace Agent**: Conversational agent for searching properties and checking orders
 
+## Environments
+
+| Environment | Base URL |
+| --- | --- |
+| Local (Docker) | `http://localhost:8080` |
+| Production (Cloud Run) | `https://jussi-aibot-production-61766311353.europe-north1.run.app` |
+
 ## Quick Start
 
 ```bash
-# 1. Clone and setup
+# 1. Clone the repo
 git clone https://github.com/jussipalanen/jussi-aibot.git
 cd jussi-aibot
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
 
-# 2. Start the server
-./run.sh
+# 2. Start with Docker (recommended)
+./dev up
 
-# 3. Test the AI review (upload your resume)
-curl -F "file=@your-resume.pdf" http://127.0.0.1:8000/ai/review
+# 3. Test the AI review
+curl -F "file=@your-resume.pdf" http://localhost:8080/ai/review
 ```
 
-Visit `http://127.0.0.1:8000/docs` for interactive API documentation.
+Visit `http://localhost:8080/docs` for interactive API documentation (production: replace with production URL above).
 
 ## Prerequisites
 
-- Python 3.10+
-- `pip`
+- Python 3.12+ and `pip` (local dev)
+- Docker + Docker Compose (Docker dev)
 
-## Setup
+## Development
 
-1. Create a virtual environment:
+### Using `./dev` (recommended)
+
+The `dev` script is a thin wrapper around Docker Compose with a local fallback:
+
+| Command | Description |
+|---|---|
+| `./dev up` | Build image and start container in background |
+| `./dev down` | Stop and remove containers |
+| `./dev restart` | Restart running containers |
+| `./dev logs` | Follow container logs (default: `api` service) |
+| `./dev logs api` | Follow logs for a specific service |
+| `./dev build` | Rebuild images without starting |
+| `./dev ps` | Show container status |
+| `./dev shell` | Open a shell inside the container |
+| `./dev local` | Run directly with local venv (no Docker) |
+| `./dev set-env [svc] [region]` | Push non-secret `.env` values to a Cloud Run service |
+| `./dev help` | Show all commands |
+
+### Local venv (no Docker)
 
 ```bash
-python3 -m venv .venv
-```
-
-2. Activate it:
-
-```bash
-source .venv/bin/activate
-```
-
-3. Install dependencies:
-
-```bash
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-```
-
-## Run
-
-Start the FastAPI development server:
-
-```bash
-uvicorn main:app --reload
-```
-
-Or use the project launcher script (recommended):
-
-```bash
-./run.sh
+./dev local
 ```
 
 Optional custom host/port:
 
 ```bash
-HOST=127.0.0.1 PORT=8001 ./run.sh
+HOST=127.0.0.1 PORT=8001 ./dev local
 ```
 
-Server will start at:
-
-- `http://127.0.0.1:8000`
+Server will start at `http://127.0.0.1:8001`.
 
 ## Verify
 
-Test the API endpoints:
+After `./dev up`, the service is available at `http://localhost:8080`:
 
-- Root endpoint: `http://127.0.0.1:8000/`
-- **Swagger UI docs (Interactive API)**: `http://127.0.0.1:8000/docs` 
-- ReDoc docs: `http://127.0.0.1:8000/redoc`
-- Health check: `http://127.0.0.1:8000/health`
+| URL | Description |
+|---|---|
+| `http://localhost:8080/` | Root endpoint |
+| `http://localhost:8080/health` | Health check |
+| `http://localhost:8080/docs` | Swagger UI (interactive) |
+| `http://localhost:8080/redoc` | ReDoc documentation |
 
-Quick health check from terminal:
+Quick health check:
 
 ```bash
-curl http://127.0.0.1:8000/
+curl http://localhost:8080/health
 ```
 
 ## AI-Powered Resume Review
@@ -186,100 +185,246 @@ The API returns a comprehensive JSON response with AI-generated insights:
 }
 ```
 
-## JussiSpace Agent
+## AI Chat (`POST /ai/chat`)
 
-A conversational AI agent powered by Google Vertex AI (Gemini) that lets users search properties and check order status via natural language.
+A multi-handler conversational AI endpoint powered by Google Vertex AI (Gemini). Use the `handler` field to select which chatbot to invoke.
 
-### How It Works
+### Handlers
 
-The agent module (`agent/`) defines tools that map to JussiSpace backend endpoints. Gemini decides which tool to call based on the user's message and handles multi-step tool calls automatically.
-
-**Available tools:**
-
-| Tool | Description |
+| Handler | Description |
 | --- | --- |
-| `search_properties` | Search apartments/offices by city, type, status |
-| `get_property` | Get full details of a property by ID |
-| `get_order_status` | Get status and details of a specific order |
-| `list_orders` | List orders filtered by user or status |
+| `jussispace` | Search properties and check order status in JussiSpace |
+| `jussimatic-ai-cv-chat` | Q&A about Jussi Alanen's CV and professional background |
 
-### Setup
+### API endpoint
 
-1. Install the Vertex AI SDK (already included in `requirements.txt`):
+```
+POST /ai/chat
+Content-Type: application/json
+```
+
+**Request body:**
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `handler` | Yes | Which chatbot to use (see table above) |
+| `message` | Yes | User's message |
+| `language` | No | `"fi"` or `"en"` — auto-detected when omitted |
+| `history` | No | Previous messages for multi-turn chat |
+
+**Single turn:**
+```json
+{
+  "handler": "jussispace",
+  "message": "Näytä vapaat asunnot Helsingissä",
+  "language": "fi",
+  "history": []
+}
+```
+
+**Multi-turn (pass history from frontend):**
+```json
+{
+  "handler": "jussispace",
+  "message": "Entä Tampereella?",
+  "language": "fi",
+  "history": [
+    {"role": "user", "content": "Näytä vapaat asunnot Helsingissä"},
+    {"role": "assistant", "content": "Löysin 3 asuntoa Helsingissä..."}
+  ]
+}
+```
+
+**Response:**
+```json
+{ "reply": "Helsingissä on saatavilla seuraavat asunnot..." }
+```
+
+### Required environment variables
+
+All of these must be set in `.env`:
+
+| Variable | Description | Example |
+| --- | --- | --- |
+| `GCP_PROJECT` | GCP project ID | `my-gcp-project` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account key **inside the container** | `/secrets/gcp-key.json` |
+| `GCP_KEY_PATH` | Path to service account key **on the host** (Docker mount) | `./secrets/gcp-key.json` |
+| `AGENT_EMAIL` | JussiSpace agent login email | `agent@example.com` |
+| `AGENT_PASSWORD` | JussiSpace agent password — **wrap in single quotes** if it contains `$` | `'p@$$word'` |
+| `JUSSISPACE_API_URL` | JussiSpace backend base URL | `https://backend-lab-jussispace.jussialanen.com/api` |
+| `JUSSIMATIC_CV_API_URL` | Jussimatic CV API URL (full URL with code param) | `https://backend-laravel.dev.jussialanen.com/api/resumes/current?owner=...&code=...` |
+
+Optional (defaults shown):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `AGENT_VERTEX_MODEL` | `gemini-2.5-flash-lite` | Default Gemini model for all handlers |
+| `AGENT_GCP_LOCATION` | `europe-north1` | Vertex AI region |
+| `JUSSISPACE_VERTEX_MODEL` | _(falls back to `AGENT_VERTEX_MODEL`)_ | Model override for `jussispace` handler |
+| `JUSSIMATIC_CV_VERTEX_MODEL` | _(falls back to `AGENT_VERTEX_MODEL`)_ | Model override for `jussimatic-ai-cv-chat` handler |
+
+### Service account key setup
+
+1. Download the service account JSON key from GCP Console
+2. Place it in `secrets/` inside the project directory (gitignored):
 
 ```bash
-pip install -r requirements.txt
+mkdir -p secrets
+cp /path/to/your-key.json secrets/gcp-key.json
 ```
 
-2. Authenticate with Google Cloud:
+3. Set in `.env`:
 
 ```bash
-gcloud auth application-default login
+GCP_KEY_PATH=./secrets/gcp-key.json
+GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json
 ```
 
-3. Set the required environment variables in your `.env`:
+### Adding a new handler
 
-```bash
-JUSSISPACE_API_URL=https://your-api.com/api
-AGENT_EMAIL=agent@jussispace.internal
-AGENT_PASSWORD=your-agent-password
-GCP_PROJECT=your-gcp-project
-GCP_LOCATION=europe-west1
-```
+1. Add the handler name to `SUPPORTED_CHAT_HANDLERS` in `routes.py`
+2. Create `agent/<handler>_agent.py` with an `ask(message, language, history)` function
+3. Add an `elif` branch in the `/ai/chat` endpoint
+4. Optionally add a `<HANDLER>_VERTEX_MODEL` env var for a model override
 
-### Usage
-
-```python
-from agent.agent import ask
-
-# Language auto-detected from the message
-reply = ask("Show me available apartments in Helsinki")
-
-# Force Finnish response
-reply = ask("Näytä vapaat asunnot Helsingissä", language="fi")
-
-# Force English response
-reply = ask("Mikä on tilauksen 42 status?", language="en")
-```
-
-The `language` parameter is optional — `"fi"` for Finnish, `"en"` for English. When omitted, the agent mirrors the language of the user's message.
-
-### File Structure
+### File structure
 
 ```
 agent/
-├── tools.py    — Gemini FunctionDeclaration definitions
-├── client.py   — HTTP client for the JussiSpace backend (handles auth)
-└── agent.py    — Vertex AI agentic loop
+├── tools.py                 — JussiSpace tool definitions
+├── client.py                — HTTP client for JussiSpace backend (handles auth)
+├── agent.py                 — JussiSpace agentic loop
+└── jussimatic_cv_agent.py   — Jussimatic CV chat agent
 ```
 
 ## Docker
 
-Build the image:
+The project ships with a `Dockerfile` and `docker-compose.yml`. Use `./dev` for the common workflows:
 
 ```bash
-docker build -t jussi-aibot .
+./dev up        # build + start (detached)
+./dev logs      # tail logs
+./dev down      # stop + remove
+./dev restart   # restart without rebuild
+./dev build     # rebuild image only
+./dev shell     # sh into the running container
 ```
 
-Run locally (maps host 8000 to container 8080):
+The Compose setup mounts `.:/app` and runs Uvicorn with `--reload`, so any `.py` edit is picked up live without restarting the container.
+
+**Optional ML dependencies** (local model, large image):
 
 ```bash
-docker run --rm -p 8000:8080 jussi-aibot
+docker build --build-arg INCLUDE_ML_DEPS=1 -t jussi-aibot:ml .
 ```
 
-Or with Compose:
+**Environment variables** can be placed in a `.env` file in the project root — Compose loads it automatically (it is gitignored and excluded from the Docker build context):
 
 ```bash
-docker compose up --build
+cp .env.example .env   # if an example file exists
+# or create manually:
+echo "PUTER_API_KEY=your_key" >> .env
 ```
 
-Hot reload with Compose (auto-restart on code changes):
+## Testing
+
+### Run the test suite
 
 ```bash
-docker compose up --build
+# Install test dependencies (once)
+pip install -r requirements.txt pytest httpx
+
+# Run all tests
+pytest
+
+# Verbose output
+pytest -v
+
+# Run a specific file
+pytest tests/test_services.py -v
+
+# Run a specific test
+pytest tests/test_api.py::test_health -v
 ```
 
-When you edit a `.py` file, Uvicorn reloads the app. Refresh the browser to see changes.
+### Test structure
+
+| File | What it covers |
+|---|---|
+| `tests/test_origin_security.py` | Origin matching logic — exact match, prefix/suffix attacks, protocol mismatch, port mismatch |
+| `tests/test_services.py` | Pure service functions — `normalize_whitespace`, `extract_json_from_text`, `map_rating_text`, `analyze_resume_heuristics`, `build_review_response`, `beautify_provider_output`, `_extract_puter_text` |
+| `tests/test_api.py` | API endpoints via `TestClient` — health, routing, input validation, auth, provider flows (AI providers are mocked) |
+
+### Shell integration tests
+
+These require a running server and are intended for manual or staging use:
+
+```bash
+# Start the server first
+./dev up
+
+# Run origin security verification
+bash tests/verify_origin_security.sh
+
+# Run origin access tests
+bash tests/test_origin_access.sh
+```
+
+### Configuration
+
+`pytest.ini` sets sensible defaults — no extra flags needed for a standard run:
+
+```ini
+[pytest]
+testpaths = tests
+addopts = -v --tb=short
+```
+
+## Postman Collection
+
+Generate a Postman Collection v2.1 directly from the live OpenAPI schema:
+
+```bash
+# Default output (postman/postman_collection.json, base URL http://localhost:8080)
+./dev generate-postman
+
+# Custom output file
+./dev generate-postman postman/my_collection.json
+
+# Custom output + base URL (e.g. staging)
+./dev generate-postman postman/my_collection.json https://staging.example.com
+```
+
+Then import into Postman: **File → Import → select the generated `.json` file**.
+
+The collection includes:
+- All endpoints grouped by tag
+- Form-data body pre-configured for `/ai/review` (file upload + provider field)
+- A disabled `X-API-Key` header on every request — enable and fill in `{{API_KEY}}` when needed
+- Collection-level variables: `base_url` and `API_KEY`
+
+> The generator reads the FastAPI OpenAPI schema at build time — no running server required.
+
+## CI / GitHub Actions
+
+Every pull request to `main` or `dev-*` branches runs four automated checks:
+
+| Job | Tool | What it checks |
+|---|---|---|
+| **Dependency Audit** | `pip-audit` | Known CVEs in `requirements.txt` and `requirements-ml.txt` |
+| **SAST** | `bandit` | Insecure code patterns (medium+ severity), results uploaded to GitHub Security tab |
+| **Container Scan** | `trivy` | HIGH/CRITICAL OS and package vulnerabilities in the built Docker image |
+| **Tests** | `pytest` | Full test suite including unit and API tests |
+
+SARIF results from bandit and trivy appear in **Security → Code scanning** in the GitHub repository.
+
+### Dependabot
+
+Dependabot is configured to open weekly PRs for:
+- Python package updates (`requirements.txt`, `requirements-ml.txt`)
+- GitHub Actions version updates
+
+Dependency PRs are grouped to reduce noise — all Python packages arrive as a single PR.
 
 ## Rate Limiting
 
@@ -497,11 +642,70 @@ Postman setup for `/ai/review`:
 
 ## Google Cloud Run
 
-Deploy from source (Cloud Run builds the image and sets `PORT`):
+**Production URL:** `https://jussi-aibot-production-61766311353.europe-north1.run.app`
+
+### Deploy via Cloud Build (recommended)
+
+Commits to `main` trigger Cloud Build automatically (if a trigger is configured).
+Manual build + deploy:
 
 ```bash
-gcloud run deploy jussi-aibot \
-	--source . \
-	--region YOUR_REGION \
-	--allow-unauthenticated
+gcloud builds submit --config=cloudbuild.yaml
 ```
+
+Override specific env vars at build time:
+
+```bash
+gcloud builds submit --config=cloudbuild.yaml \
+  --substitutions=_DEFAULT_PROVIDER=vertex_ai,_ALLOWED_ORIGINS=https://yourdomain.com
+```
+
+### Update env vars without rebuilding
+
+Push non-secret values from your local `.env` to the running Cloud Run service:
+
+```bash
+./dev set-env                              # default: jussi-aibot-production, europe-north1
+./dev set-env jussi-aibot-production europe-north1
+```
+
+Sensitive values (`AGENT_EMAIL`, `AGENT_PASSWORD`, `API_KEYS`, `PUTER_API_KEY`) are skipped by `set-env` — manage them via Secret Manager (see below).
+
+### Deploy from source (one-off)
+
+```bash
+gcloud run deploy jussi-aibot-production \
+  --source . \
+  --region europe-north1 \
+  --allow-unauthenticated
+```
+
+### Secrets (Secret Manager)
+
+Sensitive values are injected as Secret Manager secrets in `cloudbuild.yaml`:
+
+| Secret name | Used for |
+| --- | --- |
+| `AGENT_EMAIL` | JussiSpace agent login email |
+| `AGENT_PASSWORD` | JussiSpace agent password |
+| `API_KEYS` | Optional API key list |
+| `PUTER_API_KEY` | Puter AI key |
+
+Create/update a secret:
+
+```bash
+echo -n "your-value" | gcloud secrets create AGENT_PASSWORD --data-file=-
+# or update existing:
+echo -n "your-value" | gcloud secrets versions add AGENT_PASSWORD --data-file=-
+```
+
+### Vertex AI in Cloud Run
+
+Cloud Run uses the service account attached to the revision — no key file needed. The `GOOGLE_APPLICATION_CREDENTIALS` env var is **not required** in Cloud Run. Grant the service account the `Vertex AI User` role:
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:YOUR_SA@$PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/aiplatform.user
+```
+
