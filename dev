@@ -98,6 +98,61 @@ PYEOF
       --set-env-vars="${ENV_STR}"
     echo "Done."
     ;;
+  create-secrets)
+    # Create or update all required secrets in Secret Manager with JUSSI_AIBOT_ prefix.
+    # Reads default values from .env (if present), then prompts to confirm/override.
+    PREFIX="JUSSI_AIBOT_"
+    ENV_FILE="${PROJECT_DIR}/.env"
+    SECRETS="AI_SECRET_KEY AGENT_EMAIL AGENT_PASSWORD PUTER_API_KEY API_KEYS"
+
+    echo "Creating/updating Secret Manager secrets (prefix: ${PREFIX})"
+    echo ""
+
+    for SECRET in ${SECRETS}; do
+      SM_NAME="${PREFIX}${SECRET}"
+
+      # Read default from .env if available
+      DEFAULT=""
+      if [ -f "${ENV_FILE}" ]; then
+        LINE=$(grep "^${SECRET}=" "${ENV_FILE}" 2>/dev/null | head -1 || true)
+        if [ -n "${LINE}" ]; then
+          DEFAULT="${LINE#*=}"
+          DEFAULT=$(printf '%s' "${DEFAULT}" | sed "s/^['\"]//;s/['\"]$//")
+        fi
+      fi
+
+      if [ -n "${DEFAULT}" ]; then
+        printf "  %s [leave blank to use .env value]: " "${SM_NAME}"
+      else
+        printf "  %s: " "${SM_NAME}"
+      fi
+
+      stty -echo 2>/dev/null || true
+      read -r INPUT
+      stty echo 2>/dev/null || true
+      echo ""
+
+      VALUE="${INPUT:-${DEFAULT}}"
+
+      if [ -z "${VALUE}" ]; then
+        echo "    Skipping (no value)"
+        continue
+      fi
+
+      if gcloud secrets describe "${SM_NAME}" --quiet >/dev/null 2>&1; then
+        printf '%s' "${VALUE}" | gcloud secrets versions add "${SM_NAME}" --data-file=-
+        echo "    Updated: ${SM_NAME}"
+      else
+        printf '%s' "${VALUE}" | gcloud secrets create "${SM_NAME}" \
+          --replication-policy=automatic \
+          --data-file=-
+        echo "    Created: ${SM_NAME}"
+      fi
+    done
+
+    echo ""
+    echo "Done. Secrets are accessible in Cloud Run via --set-secrets."
+    ;;
   test)
     # Run pytest inside the container (all deps already installed)
     dc run --rm \
@@ -143,6 +198,7 @@ PYEOF
     echo "  ps                          Show container status"
     echo "  shell [svc]                 Open shell in container (default: api)"
     echo "  local                       Run locally with venv (no Docker)"
+    echo "  create-secrets              Create/update Secret Manager secrets (prefix: JUSSI_AIBOT_)"
     echo "  test [pytest-args]          Run pytest inside the container"
     echo "  test-local [pytest-args]    Run pytest with local venv"
     echo "  set-env [svc] [region]      Push .env values to Cloud Run (default: jussi-aibot-production, europe-north1)"
