@@ -22,9 +22,23 @@ class JussispaceClient:
     def _headers(self):
         return {"Authorization": f"Bearer {self._get_token()}"}
 
+    def _fetch_all_properties(self, args: dict) -> dict:
+        params = {k: v for k, v in args.items() if k not in ("page", "limit")}
+        params["limit"] = 50
+        all_data = []
+        page = 1
+        total_pages = 1
+        while page <= total_pages:
+            params["page"] = page
+            result = requests.get(f"{BASE_URL}/properties", params=params).json()
+            all_data.extend(result.get("data", []))
+            total_pages = result.get("totalPages", 1)
+            page += 1
+        return {"data": all_data, "total": len(all_data)}
+
     def call_tool(self, name: str, args: dict):
         if name == "search_properties":
-            return requests.get(f"{BASE_URL}/properties", params=args).json()
+            return self._fetch_all_properties(args)
 
         if name == "get_property":
             return requests.get(f"{BASE_URL}/properties/{args['id']}").json()
