@@ -326,11 +326,11 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
 
 def extract_text_from_doc(file_bytes: bytes) -> str:
     """Use antiword for legacy DOC files."""
-    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_file:  # nosec B108 - delete=False required so antiword can read the file by path
         tmp_file.write(file_bytes)
         tmp_path = tmp_file.name
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 - fixed command list, no shell, no user-controlled input in args
             ["antiword", tmp_path],
             capture_output=True,
             text=True,

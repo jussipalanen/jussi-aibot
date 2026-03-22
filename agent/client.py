@@ -11,7 +11,7 @@ class JussispaceClient:
     def _get_token(self):
         if self._token:
             return self._token
-        res = requests.post(f"{BASE_URL}/auth/login", json={
+        res = requests.post(f"{BASE_URL}/auth/login", json={  # nosec B106 - password value comes from env var, not hardcoded
             "email":    os.environ["AGENT_EMAIL"],
             "password": os.environ["AGENT_PASSWORD"],
         })
