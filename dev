@@ -98,6 +98,27 @@ PYEOF
       --set-env-vars="${ENV_STR}"
     echo "Done."
     ;;
+  test)
+    # Run pytest inside the container (all deps already installed)
+    dc run --rm \
+      -e DEFAULT_PROVIDER=puter_ai \
+      -e DISABLE_LOCAL_MODEL=true \
+      --no-deps \
+      api python -m pytest "${2:---tb=short}" -v
+    ;;
+  test-local)
+    # Run pytest with local venv
+    if [ -x "${PROJECT_DIR}/venv/bin/python" ]; then
+      VENV_PYTHON="${PROJECT_DIR}/venv/bin/python"
+    elif [ -x "${PROJECT_DIR}/.venv/bin/python" ]; then
+      VENV_PYTHON="${PROJECT_DIR}/.venv/bin/python"
+    else
+      echo "Error: no venv found. Create one first:"
+      echo "  python3 -m venv venv && pip install -r requirements.txt pytest httpx"
+      exit 1
+    fi
+    exec "${VENV_PYTHON}" -m pytest "${2:---tb=short}" -v
+    ;;
   generate-postman)
     OUTPUT="${2:-postman/postman_collection.json}"
     BASE_URL="${3:-http://localhost:8080}"
@@ -122,6 +143,8 @@ PYEOF
     echo "  ps                          Show container status"
     echo "  shell [svc]                 Open shell in container (default: api)"
     echo "  local                       Run locally with venv (no Docker)"
+    echo "  test [pytest-args]          Run pytest inside the container"
+    echo "  test-local [pytest-args]    Run pytest with local venv"
     echo "  set-env [svc] [region]      Push .env values to Cloud Run (default: jussi-aibot-production, europe-north1)"
     echo "  generate-postman [out] [url] Generate Postman collection (default: postman/postman_collection.json, http://localhost:8080)"
     ;;
