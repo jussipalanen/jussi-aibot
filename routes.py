@@ -1,11 +1,11 @@
 """
 API routes for Jussi AI Bot.
 """
-from fastapi import APIRouter, File, UploadFile, HTTPException, status, Request, Response, Form
+import secrets
+from fastapi import APIRouter, File, UploadFile, HTTPException, status, Request, Response, Form, Depends
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import hashlib
-import hmac
 import sys
 import platform
 import fastapi
@@ -16,96 +16,126 @@ from services import (
     normalize_whitespace,
     build_review_response,
     generate_review_default,
-    generate_review_puter_ai
+    generate_review_puter_ai,
+    generate_review_vertex_ai
 )
 
 # Constants
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docs", ".docx"}
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-SUPPORTED_PROVIDERS = {"default", "puter_ai"}
-DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "default").strip().lower()  # Configurable via env var
-DAILY_RATE_LIMIT = os.getenv("DAILY_RATE_LIMIT", "50/day")  # Configurable via env var
+SUPPORTED_PROVIDERS = {"default", "puter_ai", "vertex_ai"}
+DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "default").strip().lower()
+DAILY_RATE_LIMIT = os.getenv("DAILY_RATE_LIMIT", "50/day")
 PUTER_PROMPT_MAX_CHARS = int(os.getenv("PUTER_PROMPT_MAX_CHARS", "6000"))
-API_KEYS = {
-    key.strip()
-    for key in os.getenv("API_KEYS", "").split(",")
-    if key.strip()
-}
-API_KEY_HASHES = {
-    key.strip().lower()
-    for key in os.getenv("API_KEY_HASHES", "").split(",")
-    if key.strip()
-}
-REQUIRE_API_KEY = bool(API_KEYS or API_KEY_HASHES)
-
-# Allowed origins for API key bypass (for frontend clients)
-ALLOWED_ORIGINS = {
-    origin.strip()
-    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
-    if origin.strip()
-}
+VERTEX_PROMPT_MAX_CHARS = int(os.getenv("VERTEX_PROMPT_MAX_CHARS", "6000"))
 
 # Validate DEFAULT_PROVIDER at startup
 if DEFAULT_PROVIDER not in SUPPORTED_PROVIDERS:
     raise ValueError(
         f"Invalid DEFAULT_PROVIDER '{DEFAULT_PROVIDER}'. "
-        f"Must be one of: {', '.join(SUPPORTED_PROVIDERS)}"
+        f"Must be one of: {', '.join(sorted(SUPPORTED_PROVIDERS))}"
     )
 
 # Rate limiter setup
 limiter = Limiter(key_func=get_remote_address)
 
+# Allowed origins for AI endpoints — loaded once at startup.
+# When empty (local dev), all origins are permitted.
+# In production, set ALLOWED_ORIGINS=https://yourdomain.com,https://other.com
+_ALLOWED_ORIGINS: frozenset[str] = frozenset(
+    o.strip().rstrip("/")
+    for o in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+)
 
-def verify_api_key(request: Request) -> None:
-    if not REQUIRE_API_KEY:
-        return
 
-    # Check if request is from an allowed origin (frontend bypass)
-    if ALLOWED_ORIGINS:
-        origin = request.headers.get("origin") or request.headers.get("referer", "")
-        if origin:
-            # Normalize origin by removing trailing slash and path
-            origin_normalized = origin.rstrip("/").split("?")[0]
-            # For referer, extract just the origin part (scheme + host + port)
-            if "referer" in request.headers and not "origin" in request.headers:
-                from urllib.parse import urlparse
-                parsed = urlparse(origin_normalized)
-                origin_normalized = f"{parsed.scheme}://{parsed.netloc}"
-            
-            # Check against allowed origins
-            for allowed in ALLOWED_ORIGINS:
-                allowed_normalized = allowed.rstrip("/")
-                if origin_normalized == allowed_normalized or origin_normalized.startswith(allowed_normalized + "/"):
-                    return  # Allow access without API key for allowed origins
+_AI_SECRET_KEY: str = os.getenv("AI_SECRET_KEY", "").strip()
 
-    api_key = request.headers.get("x-api-key")
-    if not api_key:
+
+def _require_auth(request: Request) -> None:
+    """
+    Validate the Authorization: Bearer <key> header.
+
+    When AI_SECRET_KEY is not set (local dev), all requests pass through.
+    When set (production), the key must match — validated with compare_digest
+    to prevent timing-based enumeration attacks.
+
+    This key should only ever be used server-to-server (jussimatic/jussispace
+    backend → AI API). Never expose it in browser JS.
+    """
+    if not _AI_SECRET_KEY:
+        return  # dev mode — no restriction
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API key."
+            detail="Missing or invalid Authorization header. Expected: Bearer <key>",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if API_KEYS:
-        for key in API_KEYS:
-            if hmac.compare_digest(api_key, key):
-                return
+    provided_key = auth_header.removeprefix("Bearer ").strip()
+    if not secrets.compare_digest(provided_key, _AI_SECRET_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid key.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    if API_KEY_HASHES:
-        candidate_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
-        for stored_hash in API_KEY_HASHES:
-            if hmac.compare_digest(candidate_hash, stored_hash):
-                return
 
-    if API_KEYS or API_KEY_HASHES:
+def _require_allowed_origin(request: Request) -> None:
+    """
+    Block AI endpoint calls from origins not in ALLOWED_ORIGINS.
+
+    - When ALLOWED_ORIGINS is not set (local dev): all requests pass through.
+    - When ALLOWED_ORIGINS is set (production): the request must carry an
+      Origin header that matches one of the allowed values, otherwise 403.
+      This protects browser-embedded agents from being called by unauthorised
+      third-party sites.  Server-to-server callers (no Origin header) are also
+      blocked, so only the known frontends can reach the AI endpoints.
+    """
+    if not _ALLOWED_ORIGINS:
+        return  # dev mode — no restriction
+
+    origin = request.headers.get("origin", "").strip().rstrip("/")
+    if not origin or origin not in _ALLOWED_ORIGINS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid API key."
+            detail="Access denied: origin not allowed.",
         )
 
-# Review prompt template
+
+
+# Review prompt template (completion-style for local/puter providers)
 REVIEW_PROMPT_TEMPLATE = (
     "Ansioluettelo:\n{resume_text}\n\n"
     "Arvostelu: Tämä on"
+)
+
+# Structured prompt for Vertex AI (Gemini) — deep analysis with explicit criteria
+VERTEX_REVIEW_PROMPT_TEMPLATE = (
+    "Olet kokenut rekrytoija ja ansioluettelon arvioija. Analysoi seuraava ansioluettelo perusteellisesti "
+    "ja arvioi jokainen alla oleva kriteeri erikseen.\n\n"
+    "Arviointikriteerit:\n"
+    "1. Yhteystiedot — nimi, sähköposti, puhelin, LinkedIn/portfolio\n"
+    "2. Ammatillinen tiivistelmä tai profiili — onko selkeä ja houkutteleva\n"
+    "3. Työkokemus — työnimikkeet, työnantajat, päivämäärät, vastuut ja saavutukset\n"
+    "4. Koulutus — tutkinnot, oppilaitokset, valmistumisvuodet\n"
+    "5. Taidot ja osaaminen — tekniset taidot, kielet, sertifikaatit\n"
+    "6. Saavutukset — mitattavat tulokset, luvut, prosentit\n"
+    "7. Rakenne ja luettavuus — selkeä jäsentely, johdonmukaisuus\n"
+    "8. Pituus ja kattavuus — riittävä yksityiskohtaisuus suhteessa kokemukseen\n"
+    "9. ATS-yhteensopivuus — selkeät otsikot, ei taulukoita tai erikoismerkkejä\n"
+    "10. Kokonaisvaikutelma — erottuuko CV edukseen\n\n"
+    "Ansioluettelo:\n{resume_text}\n\n"
+    "Palauta vastauksesi AINOASTAAN seuraavassa JSON-muodossa ilman muuta tekstiä tai markdown-koodimerkkejä:\n"
+    '{{\n'
+    '  "stars": <kokonaisluku 0-5>,\n'
+    '  "rating_text": "<Erinomainen|Erittäin hyvä|Hyvä|Tyydyttävä|Heikko|Huono>",\n'
+    '  "summary": "<kattava yhteenveto suomeksi, 2-4 lausetta>",\n'
+    '  "strengths": ["<konkreettinen vahvuus 1>", "<konkreettinen vahvuus 2>", "<konkreettinen vahvuus 3>"],\n'
+    '  "weaknesses": ["<kehityskohde 1>", "<kehityskohde 2>", "<kehityskohde 3>"]\n'
+    '}}'
 )
 
 # Create router
@@ -147,7 +177,57 @@ async def version() -> dict[str, str]:
     }
 
 
-@router.post("/ai/review")
+SUPPORTED_CHAT_HANDLERS = {"jussispace", "jussimatic-ai-cv-chat"}
+
+class ChatHistoryMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    handler: str  # e.g. "jussispace"
+    message: str
+    language: str | None = None
+    history: list[ChatHistoryMessage] = []
+
+
+@router.post("/ai/chat", dependencies=[Depends(_require_auth), Depends(_require_allowed_origin)])
+@limiter.limit(DAILY_RATE_LIMIT)
+async def chat(request: Request, body: ChatRequest) -> dict:
+    """
+    Conversational AI agent. Use `handler` to select the chatbot:
+    - "jussispace" — searches properties and checks orders
+    """
+    if body.handler not in SUPPORTED_CHAT_HANDLERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown handler '{body.handler}'. Supported: {', '.join(sorted(SUPPORTED_CHAT_HANDLERS))}."
+        )
+
+    try:
+        if body.handler == "jussispace":
+            from agent.agent import ask
+            reply = ask(
+                body.message,
+                language=body.language,
+                history=[m.model_dump() for m in body.history],
+            )
+        elif body.handler == "jussimatic-ai-cv-chat":
+            from agent.jussimatic_cv_agent import ask
+            reply = ask(
+                body.message,
+                language=body.language,
+                history=[m.model_dump() for m in body.history],
+            )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Agent error: {exc}") from exc
+
+    return {"reply": reply}
+
+
+@router.post("/ai/review", dependencies=[Depends(_require_auth), Depends(_require_allowed_origin)])
 @limiter.limit(DAILY_RATE_LIMIT)
 async def ai_review(
     request: Request,
@@ -158,7 +238,6 @@ async def ai_review(
     Review a resume file and provide analysis with ratings.
     Supports PDF, DOC, and DOCX formats and provider selection.
     """
-    verify_api_key(request)
     
     # Use environment variable if provider not provided
     if provider is None or provider.strip() == "":
@@ -169,7 +248,7 @@ async def ai_review(
     if provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid provider. Use 'default' or 'puter_ai'."
+            detail=f"Invalid provider. Use one of: {', '.join(sorted(SUPPORTED_PROVIDERS))}."
         )
 
     # Validate file input and size limits
@@ -201,14 +280,16 @@ async def ai_review(
         )
 
     # Generate review with selected provider
-    prompt_text = parsed_text
-    if provider == "puter_ai" and PUTER_PROMPT_MAX_CHARS > 0:
-        prompt_text = parsed_text[:PUTER_PROMPT_MAX_CHARS]
-
-    prompt = REVIEW_PROMPT_TEMPLATE.format(resume_text=prompt_text)
-    if provider == "puter_ai":
+    if provider == "vertex_ai":
+        prompt_text = parsed_text[:VERTEX_PROMPT_MAX_CHARS] if VERTEX_PROMPT_MAX_CHARS > 0 else parsed_text
+        prompt = VERTEX_REVIEW_PROMPT_TEMPLATE.format(resume_text=prompt_text)
+        model_output = generate_review_vertex_ai(prompt)
+    elif provider == "puter_ai":
+        prompt_text = parsed_text[:PUTER_PROMPT_MAX_CHARS] if PUTER_PROMPT_MAX_CHARS > 0 else parsed_text
+        prompt = REVIEW_PROMPT_TEMPLATE.format(resume_text=prompt_text)
         model_output = generate_review_puter_ai(prompt)
     else:
+        prompt = REVIEW_PROMPT_TEMPLATE.format(resume_text=parsed_text)
         model_output = generate_review_default(prompt)
 
     # Build response

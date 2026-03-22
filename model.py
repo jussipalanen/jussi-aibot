@@ -8,8 +8,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # --------------------------
 MODEL_NAME = "TurkuNLP/gpt3-finnish-small"
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)  # nosec B615 - trusted public HuggingFace model, revision pinning not required
+model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)  # nosec B615 - trusted public HuggingFace model, revision pinning not required
 
 # Ensure padding token is set for causal LM generation
 if tokenizer.pad_token is None:

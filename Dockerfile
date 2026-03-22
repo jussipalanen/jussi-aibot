@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,10 +16,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends antiword \
     && rm -rf /var/lib/apt/lists/*
 
-# Create cache dir and non-root user early to keep layers stable.
+# Create non-root user and cache dir.
 RUN useradd -m -u 10001 appuser \
     && mkdir -p "${HF_HOME}" \
-    && chown -R appuser:appuser /app "${HF_HOME}"
+    && chown appuser:appuser "${HF_HOME}"
 
 COPY requirements.txt ./requirements.txt
 COPY requirements-ml.txt ./requirements-ml.txt
@@ -33,7 +33,7 @@ RUN if [ "$INCLUDE_ML_DEPS" = "1" ]; then \
             pip install -r requirements-ml.txt; \
         fi
 
-COPY . .
+COPY --chown=appuser:appuser . .
 
 USER appuser
 

@@ -1,0 +1,94 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main, dev-*]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 1. Dependency vulnerability audit ─────────────────────────────────────
+  audit:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit core dependencies
+        run: pip-audit -r requirements.txt
+
+      - name: Audit ML dependencies
+        run: pip-audit -r requirements-ml.txt
+
+  # ── 2. Python static security analysis ────────────────────────────────────
+  bandit:
+    name: SAST (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: pip install bandit[sarif]
+
+      - name: Run bandit
+        run: |
+          bandit -r . \
+            --exclude ./venv,./tests \
+            --format txt \
+            --severity-level medium \
+            --confidence-level medium
+
+  # ── 3. Docker image vulnerability scan ────────────────────────────────────
+  trivy:
+    name: Container Scan (trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image for scanning
+        run: docker build -t jussi-aibot:scan .
+
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: jussi-aibot:scan
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+  # ── 4. Python tests ────────────────────────────────────────────────────────
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install antiword (required by services.py)
+        run: sudo apt-get install -y antiword
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest httpx
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short --ignore=tests/test_origin_access.sh --ignore=tests/verify_origin_security.sh

@@ -17,7 +17,7 @@ echo ""
 # Check if server is running
 if ! curl -s http://127.0.0.1:8000/health > /dev/null 2>&1; then
     echo "❌ ERROR: Server is not running on http://127.0.0.1:8000"
-    echo "Please start the server first with: ./run.sh"
+    echo "Please start the server first with: ./dev"
     exit 1
 fi
 

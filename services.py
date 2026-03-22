@@ -177,6 +177,39 @@ def generate_review_puter_ai(prompt: str) -> str:
     return _extract_puter_text(response)
 
 
+def generate_review_vertex_ai(prompt: str) -> str:
+    """Generate review text with Google Vertex AI (Gemini)."""
+    try:
+        import vertexai
+        from vertexai.generative_models import GenerativeModel
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vertex AI SDK is not installed. Run: pip install google-cloud-aiplatform"
+        ) from exc
+
+    project = os.getenv("GCP_PROJECT", "").strip()
+    location = os.getenv("GCP_LOCATION", "europe-north1").strip() or "europe-north1"
+    model_name = os.getenv("VERTEX_MODEL", "gemini-2.5-flash-lite").strip() or "gemini-2.5-flash-lite"
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vertex AI is not configured. Missing GCP_PROJECT."
+        )
+
+    try:
+        vertexai.init(project=project, location=location)
+        model = GenerativeModel(model_name)
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Vertex AI request failed: {exc}"
+        ) from exc
+
+
 def map_rating_text(stars: int) -> str:
     """Map numeric score to rubric text."""
     if stars >= 5:
@@ -293,11 +326,11 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
 
 def extract_text_from_doc(file_bytes: bytes) -> str:
     """Use antiword for legacy DOC files."""
-    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_file:  # nosec B108 - delete=False required so antiword can read the file by path
         tmp_file.write(file_bytes)
         tmp_path = tmp_file.name
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 - fixed command list, no shell, no user-controlled input in args
             ["antiword", tmp_path],
             capture_output=True,
             text=True,
@@ -353,50 +386,88 @@ def analyze_resume_heuristics(parsed_text: str) -> dict:
         score = 5  # Acceptable length
         strengths.append(f"Riittävä pituus ({word_count} sanaa)")
     
-    # Required sections
-    has_experience = any(word in text_lower for word in ['kokemus', 'työkokemus', 'työ'])
-    has_education = any(word in text_lower for word in ['koulutus', 'opiskelu', 'tutkinto', 'yliopisto', 'koulu'])
-    has_skills = any(word in text_lower for word in ['osaaminen', 'taito', 'kieli'])
-    has_contact = '@' in parsed_text or 'puhelin' in text_lower or 'email' in text_lower
-    
+    # Required sections — Finnish and English keywords
+    has_experience = any(word in text_lower for word in [
+        'kokemus', 'työkokemus', 'työ', 'työnantaja',
+        'experience', 'employment', 'work history', 'position', 'employer'
+    ])
+    has_education = any(word in text_lower for word in [
+        'koulutus', 'opiskelu', 'tutkinto', 'yliopisto', 'koulu', 'ammattikoulu',
+        'education', 'degree', 'university', 'bachelor', 'master', 'diploma', 'college'
+    ])
+    has_skills = any(word in text_lower for word in [
+        'osaaminen', 'taito', 'kieli', 'sertifikaatti',
+        'skills', 'technologies', 'languages', 'certifications', 'competencies'
+    ])
+    has_contact = (
+        '@' in parsed_text
+        or any(word in text_lower for word in ['puhelin', 'email', 'phone', 'linkedin', 'github', 'portfolio'])
+    )
+    has_summary = any(word in text_lower for word in [
+        'tiivistelmä', 'profiili', 'yhteenveto',
+        'summary', 'profile', 'objective', 'about'
+    ])
+    has_achievements = any(word in text_lower for word in [
+        'saavutus', 'tulos', 'parannus', 'kasvu',
+        'achievement', 'accomplishment', 'improved', 'increased', 'reduced', 'led', '%'
+    ])
+    has_dates = bool(re.search(r'\b(19|20)\d{2}\b', parsed_text))
+    has_projects = any(word in text_lower for word in [
+        'projekti', 'vastuualue', 'johtaminen', 'kehittäminen',
+        'project', 'responsibility', 'managed', 'developed', 'led'
+    ])
+
     if has_experience:
         score += 1
         strengths.append("Sisältää työkokemuksen")
     else:
         weaknesses.append("Työkokemus puuttuu tai epäselvä")
-    
+
     if has_education:
         score += 1
         strengths.append("Sisältää koulutustiedot")
     else:
         weaknesses.append("Koulutustiedot puuttuvat")
-    
+
     if has_skills:
         score += 1
         strengths.append("Sisältää osaamistiedot")
     else:
         weaknesses.append("Osaamistiedot puuttuvat")
-    
+
     if has_contact:
         score += 1
         strengths.append("Yhteystiedot löytyvät")
     else:
         weaknesses.append("Yhteystiedot puuttuvat")
-    
-    # Advanced content scoring
-    if any(word in text_lower for word in ['projekti', 'vastuualue', 'johtaminen', 'kehittäminen']):
+
+    if has_summary:
         score += 1
-        strengths.append("Sisältää konkreettisia projekteja/vastuita")
-    
-    if any(word in text_lower for word in ['saavutus', 'tulos', 'parannus', '%', 'kasvu']):
+        strengths.append("Sisältää ammatillisen tiivistelmän")
+    else:
+        weaknesses.append("Ammatillinen tiivistelmä puuttuu")
+
+    if has_achievements:
         score += 1
         strengths.append("Sisältää mitattavia saavutuksia")
-    
-    # Length bonuses for comprehensive CVs
+    else:
+        weaknesses.append("Mitattavat saavutukset puuttuvat")
+
+    if has_dates:
+        score += 1
+        strengths.append("Päivämäärät merkitty selkeästi")
+    else:
+        weaknesses.append("Päivämäärät puuttuvat tai epäselvät")
+
+    if has_projects:
+        score += 1
+        strengths.append("Sisältää konkreettisia projekteja/vastuita")
+
+    # Length bonuses
     if word_count > 200:
         score += 1
         strengths.append("Kattava sisältö")
-    
+
     if word_count > 400:
         score += 1
         strengths.append("Erittäin yksityiskohtainen")
@@ -479,7 +550,7 @@ def build_review_response(parsed_text: str, model_output: str, provider: str = "
         stars = max(0, min(5, stars))
 
         rating_text = parsed.get("rating_text")
-        if rating_text not in {"Erinomainen", "Erittäin hyvä", "Hyvä", "Huono"}:
+        if rating_text not in {"Erinomainen", "Erittäin hyvä", "Hyvä", "Tyydyttävä", "Heikko", "Huono"}:
             rating_text = map_rating_text(stars)
     else:
         # Fallback to heuristic analysis
@@ -504,7 +575,6 @@ def build_review_response(parsed_text: str, model_output: str, provider: str = "
         )
 
     return {
-        "provider": provider,
         "rating_text": rating_text,
         "stars": stars,
         "summary": summary,
