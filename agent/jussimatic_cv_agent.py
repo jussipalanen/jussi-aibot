@@ -4,6 +4,7 @@ Fetches Jussi Alanen's CV from the API and answers questions about it.
 """
 import os
 import time
+from urllib.parse import urlparse
 
 import requests
 import vertexai
@@ -38,6 +39,18 @@ def _fetch_cv() -> dict:
     return data
 
 
+def _resolve_image_url(path: str) -> str:
+    """Resolve a relative image path to an absolute URL using the storage base URL."""
+    if not path:
+        return ""
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    base = os.getenv("JUSSILOG_STORAGE_BASE_URL", "").strip().rstrip("/")
+    if base:
+        return f"{base}/{path.lstrip('/')}"
+    return path
+
+
 def _format_cv(cv: dict) -> str:
     """Build a compact plain-text representation of the CV for the model context."""
     lines = []
@@ -54,47 +67,122 @@ def _format_cv(cv: dict) -> str:
         lines.append(f"Portfolio: {cv['portfolio_url']}")
     if cv.get("github_url"):
         lines.append(f"GitHub: {cv['github_url']}")
+    if cv.get("photo"):
+        lines.append(f"Profile image: {_resolve_image_url(cv['photo'])}")
+    if cv.get("photo_sizes"):
+        sizes = cv["photo_sizes"]
+        if sizes.get("medium"):
+            lines.append(f"Profile image (medium): {_resolve_image_url(sizes['medium'])}")
 
     # Summary
     if cv.get("summary"):
         lines.append(f"\nSummary:\n{cv['summary']}")
 
     # Work experience
-    lines.append("\nWork Experience:")
-    for exp in cv.get("work_experiences", []):
-        start = (exp.get("start_date") or "")[:7]
-        end = "present" if exp.get("is_current") else (exp.get("end_date") or "")[:7]
-        lines.append(f"- {exp['job_title']} at {exp['company_name']} ({start} – {end}), {exp.get('location', '')}")
-        if exp.get("description"):
-            lines.append(f"  {exp['description'][:400]}")
+    if cv.get("work_experiences"):
+        lines.append("\nWork Experience:")
+        for exp in cv.get("work_experiences", []):
+            start = (exp.get("start_date") or "")[:7]
+            end = "Present" if exp.get("is_current") else (exp.get("end_date") or "")[:7]
+            lines.append(f"\n  Company:  {exp.get('company_name', '')}")
+            lines.append(f"  Role:     {exp.get('job_title', '')}")
+            lines.append(f"  Period:   {start} – {end}")
+            if exp.get("location"):
+                lines.append(f"  Location: {exp['location']}")
+            if exp.get("description"):
+                lines.append(f"  About:    {exp['description'][:400]}")
 
     # Education
-    lines.append("\nEducation:")
-    for edu in cv.get("educations", []):
-        lines.append(
-            f"- {edu.get('degree', '')} ({edu.get('field_of_study', '')}) "
-            f"at {edu.get('institution_name', '')}, graduated {edu.get('graduation_year', '')}"
-        )
+    if cv.get("educations"):
+        lines.append("\nEducation:")
+        for edu in cv.get("educations", []):
+            lines.append(f"\n  School:   {edu.get('institution_name', '')}")
+            lines.append(f"  Degree:   {edu.get('degree', '')} – {edu.get('field_of_study', '')}")
+            if edu.get("graduation_year"):
+                lines.append(f"  Graduated: {edu['graduation_year']}")
+            if edu.get("location"):
+                lines.append(f"  Location: {edu['location']}")
 
     # Skills grouped by category
-    lines.append("\nSkills:")
-    skills_by_cat: dict[str, list[str]] = {}
-    for skill in cv.get("skills", []):
-        cat = skill.get("category", "other")
-        skills_by_cat.setdefault(cat, []).append(f"{skill['name']} ({skill.get('proficiency', '')})")
-    for cat, skills in skills_by_cat.items():
-        lines.append(f"  {cat}: {', '.join(skills)}")
+    _CATEGORY_LABELS: dict[str, str] = {
+        "fi": {
+            "programming_languages": "Ohjelmointikielet",
+            "frameworks": "Sovelluskehykset",
+            "libraries": "Kirjastot",
+            "databases": "Tietokannat",
+            "cloud_platforms": "Pilvipalvelut",
+            "serverless": "Serverless",
+            "ci_cd": "CI/CD",
+            "configuration_management": "Konfiguraationhallinta",
+            "version_control": "Versionhallinta",
+            "testing_qa": "Testaus & laadunvarmistus",
+            "machine_learning_ai": "Tekoäly & koneoppiminen",
+            "operating_systems": "Käyttöjärjestelmät",
+            "project_management": "Projektinhallinta",
+            "ui_ux_design": "UI/UX-suunnittelu",
+            "other": "Muut",
+        },
+        "en": {
+            "programming_languages": "Programming Languages",
+            "frameworks": "Frameworks",
+            "libraries": "Libraries",
+            "databases": "Databases",
+            "cloud_platforms": "Cloud Platforms",
+            "serverless": "Serverless",
+            "ci_cd": "CI/CD",
+            "configuration_management": "Configuration Management",
+            "version_control": "Version Control",
+            "testing_qa": "Testing & QA",
+            "machine_learning_ai": "Machine Learning & AI",
+            "operating_systems": "Operating Systems",
+            "project_management": "Project Management",
+            "ui_ux_design": "UI/UX Design",
+            "other": "Other",
+        },
+    }
+    cv_lang = cv.get("language", "en")
+    labels = _CATEGORY_LABELS.get(cv_lang, _CATEGORY_LABELS["en"])
+    show_skill_levels = cv.get("show_skill_levels", True)
+    if cv.get("skills"):
+        lines.append("\nSkills:")
+        skills_by_cat: dict[str, list[str]] = {}
+        for skill in cv.get("skills", []):
+            cat = skill.get("category", "other")
+            entry = skill["name"] if not show_skill_levels else f"{skill['name']} ({skill.get('proficiency', '')})"
+            skills_by_cat.setdefault(cat, []).append(entry)
+        for cat, cat_skills in skills_by_cat.items():
+            label = labels.get(cat, cat.replace("_", " ").title())
+            lines.append(f"  {label}: {', '.join(cat_skills)}")
 
     # Languages
-    lines.append("\nLanguages:")
-    for lang in cv.get("languages", []):
-        lines.append(f"- {lang.get('language', '')} ({lang.get('proficiency', '')})")
+    show_language_levels = cv.get("show_language_levels", True)
+    if cv.get("languages"):
+        lines.append("\nLanguages:")
+        for lang in cv.get("languages", []):
+            entry = lang.get("language", "") if not show_language_levels else f"{lang.get('language', '')} ({lang.get('proficiency', '')})"
+            lines.append(f"  - {entry}")
 
     # Awards
     if cv.get("awards"):
         lines.append("\nAwards:")
         for award in cv.get("awards", []):
-            lines.append(f"- {award['title']}: {award.get('description', '')}")
+            lines.append(f"\n  Title: {award.get('title', '')}")
+            if award.get("issuer"):
+                lines.append(f"  Issuer: {award['issuer']}")
+            if award.get("date"):
+                lines.append(f"  Date: {award['date'][:10]}")
+            if award.get("description"):
+                lines.append(f"  Description: {award['description']}")
+
+    # Projects
+    if cv.get("projects"):
+        lines.append("\nProjects:")
+        for project in cv.get("projects", []):
+            lines.append(f"\n  Name: {project.get('name', '')}")
+            if project.get("description"):
+                lines.append(f"  Description: {project['description']}")
+            if project.get("url"):
+                lines.append(f"  URL: {project['url']}")
 
     return "\n".join(lines)
 
@@ -130,11 +218,22 @@ def ask(
     else:
         lang_instruction = "Always respond in the same language the user writes in."
 
+    photo_url = _resolve_image_url(cv_data.get("photo", ""))
+    photo_instruction = (
+        f"When introducing Jussi, follow this exact structure:\n"
+        f"1. Write exactly ONE short sentence introducing his name and title.\n"
+        f"2. On the next line, output ONLY this tag: [photo]{photo_url}[/photo]\n"
+        f"3. Then continue with the rest of the introduction and details.\n"
+        f"Do NOT write more than one sentence before the [photo] tag.\n"
+        if photo_url else ""
+    )
+
     system_prompt = (
         "You are a helpful AI assistant representing Jussi Alanen's CV and professional background.\n"
         "Answer questions about Jussi's skills, work experience, education, awards, and contact details.\n"
         "Be friendly, professional and concise. Base your answers only on the CV data provided.\n"
         "If asked about something not in the CV, say you don't have that information.\n"
+        f"{photo_instruction}"
         f"{lang_instruction}\n\n"
         f"CV DATA:\n{cv_text}"
     )
