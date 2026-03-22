@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.0] - 2026-03-22
+
+### Added
+
+#### Jussimatic AI CV agent — photo support
+- Profile photo is now included in the Gemini context from the `photo` and `photo_sizes` fields in the CV API response
+- Added `_resolve_image_url()` — resolves relative storage paths (e.g. `resumes/1/photo.jpg`) to absolute URLs using `JUSSILOG_STORAGE_BASE_URL`; absolute URLs are passed through unchanged
+- System prompt instructs Gemini to output a `[photo]...[/photo]` tag immediately after the opening sentence when introducing Jussi
+- Added `JUSSILOG_STORAGE_BASE_URL` env var (`https://jussilog-backend-uploads.storage.googleapis.com`) to `.env.example` and `cloudbuild.yaml`
+
+### Changed
+
+#### Jussimatic AI CV agent — CV formatting
+- Work experience entries are now structured blocks (Company / Role / Period / Location / About) instead of single-line dash entries
+- Education entries are now structured blocks (School / Degree / Graduated / Location)
+- Skill category names are now human-readable and localised — Finnish (`Sovelluskehykset`, `Ohjelmointikielet`, …) or English based on the CV's `language` field
+- `show_skill_levels` and `show_language_levels` flags from the CV JSON are now respected — proficiency levels are omitted from the Gemini context when set to `false`
+- Awards include `issuer` and `date` fields in the context
+- Projects section is now included in the Gemini context (was silently skipped before)
+
+---
+
 ## [1.0.0] - 2026-03-22
 
 ### Added
