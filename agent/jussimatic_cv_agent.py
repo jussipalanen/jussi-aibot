@@ -220,11 +220,12 @@ def ask(
 
     photo_url = _resolve_image_url(cv_data.get("photo", ""))
     photo_instruction = (
-        f"When introducing Jussi, follow this exact structure:\n"
+        f"PHOTO RULE: Only include the profile photo tag when the user explicitly asks who Jussi is, to introduce him, or to tell about him in general (e.g. 'Who is Jussi?', 'Introduce Jussi', 'Tell me about Jussi'). "
+        f"Do NOT include the photo tag for any other question (skills, experience, education, contact, etc.).\n"
+        f"When the photo rule applies, follow this exact structure:\n"
         f"1. Write exactly ONE short sentence introducing his name and title.\n"
         f"2. On the next line, output ONLY this tag: [photo]{photo_url}[/photo]\n"
-        f"3. Then continue with the rest of the introduction and details.\n"
-        f"Do NOT write more than one sentence before the [photo] tag.\n"
+        f"3. Then continue with the rest of the details.\n"
         if photo_url else ""
     )
 
