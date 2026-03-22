@@ -1,7 +1,8 @@
 """
 API routes for Jussi AI Bot.
 """
-from fastapi import APIRouter, File, UploadFile, HTTPException, status, Request, Response, Form
+import secrets
+from fastapi import APIRouter, File, UploadFile, HTTPException, status, Request, Response, Form, Depends
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -37,6 +38,71 @@ if DEFAULT_PROVIDER not in SUPPORTED_PROVIDERS:
 
 # Rate limiter setup
 limiter = Limiter(key_func=get_remote_address)
+
+# Allowed origins for AI endpoints — loaded once at startup.
+# When empty (local dev), all origins are permitted.
+# In production, set ALLOWED_ORIGINS=https://yourdomain.com,https://other.com
+_ALLOWED_ORIGINS: frozenset[str] = frozenset(
+    o.strip().rstrip("/")
+    for o in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+)
+
+
+_AI_SECRET_KEY: str = os.getenv("AI_SECRET_KEY", "").strip()
+
+
+def _require_auth(request: Request) -> None:
+    """
+    Validate the Authorization: Bearer <key> header.
+
+    When AI_SECRET_KEY is not set (local dev), all requests pass through.
+    When set (production), the key must match — validated with compare_digest
+    to prevent timing-based enumeration attacks.
+
+    This key should only ever be used server-to-server (jussimatic/jussispace
+    backend → AI API). Never expose it in browser JS.
+    """
+    if not _AI_SECRET_KEY:
+        return  # dev mode — no restriction
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header. Expected: Bearer <key>",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    provided_key = auth_header.removeprefix("Bearer ").strip()
+    if not secrets.compare_digest(provided_key, _AI_SECRET_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid key.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def _require_allowed_origin(request: Request) -> None:
+    """
+    Block AI endpoint calls from origins not in ALLOWED_ORIGINS.
+
+    - When ALLOWED_ORIGINS is not set (local dev): all requests pass through.
+    - When ALLOWED_ORIGINS is set (production): the request must carry an
+      Origin header that matches one of the allowed values, otherwise 403.
+      This protects browser-embedded agents from being called by unauthorised
+      third-party sites.  Server-to-server callers (no Origin header) are also
+      blocked, so only the known frontends can reach the AI endpoints.
+    """
+    if not _ALLOWED_ORIGINS:
+        return  # dev mode — no restriction
+
+    origin = request.headers.get("origin", "").strip().rstrip("/")
+    if not origin or origin not in _ALLOWED_ORIGINS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: origin not allowed.",
+        )
 
 
 
@@ -125,7 +191,7 @@ class ChatRequest(BaseModel):
     history: list[ChatHistoryMessage] = []
 
 
-@router.post("/ai/chat")
+@router.post("/ai/chat", dependencies=[Depends(_require_auth), Depends(_require_allowed_origin)])
 @limiter.limit(DAILY_RATE_LIMIT)
 async def chat(request: Request, body: ChatRequest) -> dict:
     """
@@ -161,7 +227,7 @@ async def chat(request: Request, body: ChatRequest) -> dict:
     return {"reply": reply}
 
 
-@router.post("/ai/review")
+@router.post("/ai/review", dependencies=[Depends(_require_auth), Depends(_require_allowed_origin)])
 @limiter.limit(DAILY_RATE_LIMIT)
 async def ai_review(
     request: Request,

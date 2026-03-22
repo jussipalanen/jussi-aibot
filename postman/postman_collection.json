@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "919da9e9-104c-42ba-b57a-fc78d596fabf",
+    "_postman_id": "c61c89ad-7614-46a9-bfc6-7f0029a098cc",
     "name": "Jussi AI Bot",
     "description": "A simple AI bot built with FastAPI and PyTorch for Finnish resume analysis.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -10,6 +10,11 @@
       "key": "base_url",
       "value": "http://localhost:8080",
       "type": "string"
+    },
+    {
+      "key": "AI_SECRET_KEY",
+      "value": "",
+      "type": "secret"
     }
   ],
   "item": [
@@ -17,7 +22,14 @@
       "name": "Root",
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{AI_SECRET_KEY}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
         "url": {
           "raw": "http://localhost:8080/",
           "host": [
@@ -33,7 +45,14 @@
       "name": "Robots Txt",
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{AI_SECRET_KEY}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
         "url": {
           "raw": "http://localhost:8080/robots.txt",
           "host": [
@@ -50,7 +69,14 @@
       "name": "Health",
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{AI_SECRET_KEY}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
         "url": {
           "raw": "http://localhost:8080/health",
           "host": [
@@ -68,7 +94,14 @@
       "name": "Version",
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{AI_SECRET_KEY}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
         "url": {
           "raw": "http://localhost:8080/version",
           "host": [
@@ -86,7 +119,14 @@
       "name": "Chat",
       "request": {
         "method": "POST",
-        "header": [],
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{AI_SECRET_KEY}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
         "url": {
           "raw": "http://localhost:8080/ai/chat",
           "host": [
@@ -114,7 +154,14 @@
       "name": "Ai Review",
       "request": {
         "method": "POST",
-        "header": [],
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{AI_SECRET_KEY}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
         "url": {
           "raw": "http://localhost:8080/ai/review",
           "host": [

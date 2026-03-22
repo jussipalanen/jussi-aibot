@@ -70,9 +70,19 @@ def _build_item(path: str, method: str, operation: dict, base_url: str) -> dict:
                 "options": {"raw": {"language": "json"}},
             }
 
+    # Add Authorization header (disabled — fill in {{AI_SECRET_KEY}} and enable when testing)
+    headers = [
+        {
+            "key": "Authorization",
+            "value": "Bearer {{AI_SECRET_KEY}}",
+            "type": "text",
+            "disabled": True,
+        }
+    ]
+
     request: dict = {
         "method": method.upper(),
-        "header": [],
+        "header": headers,
         "url": url,
     }
     if description:
@@ -133,6 +143,7 @@ def build_collection(base_url: str) -> dict:
         },
         "variable": [
             {"key": "base_url", "value": base_url, "type": "string"},
+            {"key": "AI_SECRET_KEY", "value": "", "type": "secret"},
         ],
         "item": items,
     }

@@ -23,14 +23,15 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-if ALLOWED_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["*"],
-    )
+# Always apply CORS. When ALLOWED_ORIGINS is empty (local dev), allow all.
+# In production, set ALLOWED_ORIGINS to restrict to your known frontends.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS if ALLOWED_ORIGINS else ["*"],
+    allow_credentials=bool(ALLOWED_ORIGINS),
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")

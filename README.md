@@ -469,118 +469,104 @@ gcloud run services update jussi-aibot-production \
 **Rate limit exceeded response:**
 When a client exceeds the rate limit, they receive a `429 Too Many Requests` error with details about when they can retry.
 
-## API Key Protection
+## Security
 
-To prevent abuse, you can require an API key for `/ai/review`.
+The `/ai/chat` and `/ai/review` endpoints are protected by three layers. All three are enforced on every request.
 
-**Enable API keys:**
-Set `API_KEYS` to a comma-separated list of allowed keys.
+### Layer 1 — Bearer token (`AI_SECRET_KEY`)
 
-**Hardened option (recommended for production):**
-Store only hashes instead of raw keys using `API_KEY_HASHES`.
+A shared secret known only to your backend servers. The AI API validates it on every call to `/ai/chat` and `/ai/review`.
 
-Example:
+**Why a bearer token and not `X-API-Key`?**
+Any header sent from a browser is visible in dev tools. The bearer token is never sent by the browser — it lives on your backend server (jussimatic, jussispace) and is added only when the backend proxies the request to this API:
+
+```
+Browser → jussimatic backend (holds AI_SECRET_KEY) → AI API
+```
+
+The browser never sees the key.
+
+**Setup:**
+
+Generate a strong key:
 ```bash
-export API_KEYS="key1,key2,key3"
+openssl rand -hex 32
 ```
 
-**Hash-based example (bash only):**
+Store it in Secret Manager (Cloud Run):
 ```bash
-# Generate a strong key
-API_KEY=$(openssl rand -base64 32 | tr -d '\n')
-
-# Create SHA-256 hash of that key
-API_KEY_HASH=$(echo -n "$API_KEY" | openssl dgst -sha256 | awk '{print $2}')
-
-# Store only the hash on the server
-export API_KEY_HASHES="$API_KEY_HASH"
-
-# Use this key in requests
-echo "X-API-Key: $API_KEY"
+echo -n "your-generated-key" | gcloud secrets create AI_SECRET_KEY --data-file=-
 ```
 
-**Request header:**
-Clients must send:
+Set it in your calling backend as an environment variable, then include it in every request:
+```http
+Authorization: Bearer <your-key>
 ```
-X-API-Key: key1
-```
 
-If `API_KEYS` is not set, the endpoint remains open (useful for local dev).
+**Behaviour:**
+- `AI_SECRET_KEY` not set → no auth required (local dev)
+- `AI_SECRET_KEY` set → `Authorization: Bearer <key>` header required; wrong or missing key → `401`
 
-## Origin-Based Access Control (Frontend Security)
+---
 
-**Problem:** When frontend applications (browsers) call the API with `X-API-Key` header, the key is visible in browser developer tools, exposing it to potential attackers.
+### Layer 2 — Origin enforcement (`ALLOWED_ORIGINS`)
 
-**Solution:** Configure allowed origins so frontend clients from trusted domains can access the API without sending the API key header.
+Even with the bearer token in place, the API also checks the `Origin` header server-side on every POST to `/ai/chat` and `/ai/review`.
 
-### Configuration
+**Why both?**
+- The bearer token protects server-to-server calls
+- The origin check ensures that even if the key leaked, it can only be used from your known domains
 
-Set `ALLOWED_ORIGINS` environment variable with comma-separated list of allowed frontend origins:
+**Setup:**
+
+Set `ALLOWED_ORIGINS` to a comma-separated list of your frontend domains:
 
 ```bash
-export ALLOWED_ORIGINS="http://localhost:3000,https://yourdomain.com,https://app.yourdomain.com"
+# .env (local dev — leave empty to allow all)
+ALLOWED_ORIGINS=
+
+# Production
+ALLOWED_ORIGINS=https://jussimatic.com,https://jussispace.com,http://localhost:3000
 ```
 
-**Local development (.env):**
+Update Cloud Run without rebuilding:
 ```bash
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+./dev set-env
+# or directly:
+gcloud run services update jussi-aibot-production \
+  --region=europe-north1 \
+  --update-env-vars=ALLOWED_ORIGINS=https://jussimatic.com,https://jussispace.com
 ```
 
-**Docker Compose:**
-Update `docker-compose.yml`:
-```yaml
-environment:
-  ALLOWED_ORIGINS: "https://yourdomain.com,https://app.yourdomain.com"
-```
+**Behaviour:**
+- `ALLOWED_ORIGINS` not set → no origin restriction (local dev)
+- `ALLOWED_ORIGINS` set → `Origin` header must match; missing or unknown origin → `403`
 
-**Cloud Run:**
-```bash
-gcloud run services update jussi-aibot \
-  --set-env-vars=ALLOWED_ORIGINS="https://yourdomain.com,https://app.yourdomain.com" \
-  --region=YOUR_REGION
-```
+---
 
-### How It Works
+### Layer 3 — CORS
 
-1. **Browser requests from allowed origins**: Automatically allowed without `X-API-Key` header
-2. **Backend/server requests**: Must include valid `X-API-Key` header
-3. **Requests from non-allowed origins**: Must include valid `X-API-Key` header
+The CORS middleware ensures browsers enforce the origin policy automatically before a request even reaches your handler. When `ALLOWED_ORIGINS` is set, only those origins receive the `Access-Control-Allow-Origin` response header — browsers block all others at the pre-flight stage.
 
-The service checks the `Origin` or `Referer` header of incoming requests. If it matches an entry in `ALLOWED_ORIGINS`, the API key check is bypassed.
+| `ALLOWED_ORIGINS` | CORS behaviour |
+| --- | --- |
+| Not set (local dev) | `Access-Control-Allow-Origin: *` — all origins allowed |
+| Set (production) | Only listed origins allowed; all others blocked by browser |
 
-### Security Notes
+---
 
-- **Origin header cannot be spoofed by browsers** due to browser security policies
-- **Non-browser clients** (curl, Postman, backend services) can spoof the Origin header, so they should still use API keys
-- **Rate limiting still applies** to all requests regardless of origin
-- **CORS is automatically configured** for allowed origins when `ALLOWED_ORIGINS` is set
-- Leave `ALLOWED_ORIGINS` empty to require API key for all requests (maximum security)
+### Summary
 
-### Example Requests
+| Scenario | Result |
+|---|---|
+| Backend from jussimatic/jussispace with correct bearer token + allowed origin | ✅ Allowed |
+| Browser from allowed origin (CORS passes, no origin check triggered by browser) | ✅ Allowed |
+| Any caller with wrong or missing bearer token | ❌ `401 Unauthorized` |
+| Any caller with unlisted `Origin` header | ❌ `403 Forbidden` |
+| Browser from an unlisted origin | ❌ Blocked by browser (CORS) + `403` from server |
+| Rate limit exceeded | ❌ `429 Too Many Requests` |
 
-**From allowed frontend (no API key needed):**
-```javascript
-// Browser automatically sends Origin header
-fetch('https://your-api.com/ai/review', {
-  method: 'POST',
-  body: formData
-})
-```
-
-**From backend service (API key required):**
-```bash
-curl -H "X-API-Key: your-secret-key" \
-  -F "file=@resume.pdf" \
-  https://your-api.com/ai/review
-```
-
-**Testing with curl (simulating browser origin):**
-```bash
-# This works only for allowed origins
-curl -H "Origin: http://localhost:3000" \
-  -F "file=@resume.pdf" \
-  http://127.0.0.1:8000/ai/review
-```
+> **Note:** The `Origin` header can be spoofed by non-browser HTTP clients. The bearer token is the primary protection against scripted abuse — the origin check is a second line of defence.
 
 ## Provider Selection
 
@@ -669,7 +655,7 @@ Push non-secret values from your local `.env` to the running Cloud Run service:
 ./dev set-env jussi-aibot-production europe-north1
 ```
 
-Sensitive values (`AGENT_EMAIL`, `AGENT_PASSWORD`, `API_KEYS`, `PUTER_API_KEY`) are skipped by `set-env` — manage them via Secret Manager (see below).
+Sensitive values (`AI_SECRET_KEY`, `AGENT_EMAIL`, `AGENT_PASSWORD`, `API_KEYS`, `PUTER_API_KEY`) are skipped by `set-env` — manage them via Secret Manager (see below).
 
 ### Deploy from source (one-off)
 
@@ -686,9 +672,9 @@ Sensitive values are injected as Secret Manager secrets in `cloudbuild.yaml`:
 
 | Secret name | Used for |
 | --- | --- |
+| `AI_SECRET_KEY` | Bearer token for `/ai/chat` and `/ai/review` — never put in browser JS |
 | `AGENT_EMAIL` | JussiSpace agent login email |
 | `AGENT_PASSWORD` | JussiSpace agent password |
-| `API_KEYS` | Optional API key list |
 | `PUTER_API_KEY` | Puter AI key |
 
 Create/update a secret:

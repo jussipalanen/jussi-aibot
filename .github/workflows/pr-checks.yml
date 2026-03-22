@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   security-events: write  # for uploading SARIF results
+  actions: read           # required by codeql-action/upload-sarif on PRs
 
 jobs:
   # ── 1. Dependency vulnerability audit ─────────────────────────────────────
@@ -56,7 +57,7 @@ jobs:
             --confidence-level medium || true
 
       - name: Upload bandit SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: bandit-results.sarif
           category: bandit
@@ -72,7 +73,7 @@ jobs:
         run: docker build -t jussi-aibot:scan .
 
       - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: jussi-aibot:scan
           format: sarif
@@ -83,7 +84,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
           category: trivy
