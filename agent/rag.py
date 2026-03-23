@@ -3,7 +3,7 @@ import time
 
 from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
 
-_CACHE_TTL = 300  # seconds — rebuild embeddings after 5 minutes
+_CACHE_TTL = 1800  # seconds — rebuild embeddings after 30 minutes
 _EMBEDDING_MODEL = "text-embedding-004"
 
 

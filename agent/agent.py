@@ -54,12 +54,12 @@ def _build_system_prompt(language: str | None) -> str:
         "You help users search for properties and check their order or booking status.\n"
         "When presenting properties, format each one as an HTML card with:\n"
         "  1. The primary image (use sizes.medium.webp if available, otherwise fall back to url).\n"
-        f"     Image paths are relative — prepend {frontend_url} to build the full URL.\n"
+        "     Image URLs are already full URLs — use them directly as-is.\n"
         "     If a property has no images, omit the image tag.\n"
         f"  2. The property title as an HTML anchor linking to {frontend_url}/properties/<id>\n"
         "  3. City, type, price per month and status as a short line of text.\n"
-        "Example card:\n"
-        f'<a href="{frontend_url}/properties/4"><img src="{frontend_url}/uploads/properties/4/image.webp" alt="Penthouse — Punavuori" /></a>\n'
+        "Example card (image URL comes directly from the API response — never invent one):\n"
+        f'<a href="{frontend_url}/properties/4"><img src="{{images[0].sizes.medium.webp}}" alt="Penthouse — Punavuori" /></a>\n'
         f'<a href="{frontend_url}/properties/4">Penthouse — Punavuori</a> · Helsinki · apartment · €3500/mo · available\n'
         "When presenting an order, include order ID, property name, dates, status and total price.\n"
         "Users may describe properties informally or colloquially. Always interpret such descriptions as property search requests.\n"
@@ -151,7 +151,7 @@ def ask(
                 "role": "user",
                 "content": (
                     f"Tool '{tool_name}' returned: {tool_result_str}\n\n"
-                    "Now provide the final answer to the user."
+                    "Now provide the final answer to the user. Respond in the same language the user used."
                 ),
             })
         else:
