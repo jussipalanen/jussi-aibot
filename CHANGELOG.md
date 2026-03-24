@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.0] - 2026-03-24
+
+### Added
+
+#### JussiSpace agent — RAG property search
+- `agent/rag.py` — `PropertyRAG` class fetches all properties, embeds them with Vertex AI `text-embedding-004`, and returns the top-3 semantically matched results per query
+- Embedding cache TTL of 30 minutes; model client cached for the container lifetime to avoid repeated loading overhead
+- Colloquial/informal Finnish search language supported (e.g. "kolmio" → 3-room apartment, "kaksi" → 2 rooms, "saunan kera" → sauna amenity)
+
+#### JussiSpace agent — HTML property cards
+- Properties rendered as HTML cards with image, bold title as a deep link to the frontend, city, type, price and status
+- Order responses include bold order ID and bold status
+
+#### Tests
+- `/ai/chat` endpoint tests added to `tests/test_api.py` — happy path, language/history forwarding, 503/502 error handling; fully mocked, no GCP credentials needed locally
+
+### Changed
+
+- `agent/client.py` — `search_properties` now fetches all pages in a loop (pagination); 10s timeout added to all HTTP calls
+- `cloudbuild.yaml` — switched to gen2 execution environment, added `concurrency=5`, set explicit `gemini-2.5-flash-lite` defaults for `JUSSISPACE_VERTEX_MODEL` and `JUSSIMATIC_CV_VERTEX_MODEL`
+- README updated to reflect multi-agent platform scope
+- `.env.example` — added `JUSSISPACE_FRONTEND_URL` with WSL2+Docker networking note
+
+---
+
 ## [1.1.0] - 2026-03-22
 
 ### Added
