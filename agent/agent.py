@@ -151,7 +151,8 @@ def ask(
                 "role": "user",
                 "content": (
                     f"Tool '{tool_name}' returned: {tool_result_str}\n\n"
-                    "Now provide the final answer to the user. Respond in the same language the user used."
+                    f"The user's original message was: \"{user_message}\"\n"
+                    "Now provide the final answer to the user. You MUST respond in the exact same language the user wrote in."
                 ),
             })
         else:

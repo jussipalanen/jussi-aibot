@@ -41,13 +41,18 @@ class PropertyRAG:
 
 def _property_to_text(p: dict) -> str:
     amenities = ", ".join(a["amenity"]["name"] for a in p.get("amenities", []))
-    return (
-        f"{p.get('title', '')}. {p.get('description', '')} "
-        f"Type: {p.get('type', '')}. City: {p.get('city', '')}. "
-        f"Size: {p.get('sizeSqm', '')} sqm. Max occupants: {p.get('maxOccupants', '')}. "
-        f"Price: {p.get('pricePerMonth', '')} per month. "
-        f"Furnished: {p.get('isFurnished', '')}. Amenities: {amenities}."
-    )
+    parts = [
+        p.get("title", ""),
+        p.get("description", ""),
+        p.get("type", ""),
+        p.get("city", ""),
+        f"{p.get('sizeSqm', '')} sqm" if p.get("sizeSqm") else "",
+        f"{p.get('maxOccupants', '')} occupants" if p.get("maxOccupants") else "",
+        f"{p.get('pricePerMonth', '')} per month" if p.get("pricePerMonth") else "",
+        "furnished" if p.get("isFurnished") else "unfurnished",
+        amenities,
+    ]
+    return ". ".join(part for part in parts if part)
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
