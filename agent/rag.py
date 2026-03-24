@@ -5,6 +5,14 @@ from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
 
 _CACHE_TTL = 1800  # seconds — rebuild embeddings after 30 minutes
 _EMBEDDING_MODEL = "text-embedding-004"
+_model: TextEmbeddingModel | None = None
+
+
+def _get_model() -> TextEmbeddingModel:
+    global _model
+    if _model is None:
+        _model = TextEmbeddingModel.from_pretrained(_EMBEDDING_MODEL)
+    return _model
 
 
 class PropertyRAG:
@@ -19,7 +27,7 @@ class PropertyRAG:
     def build(self, properties: list[dict]) -> None:
         if not properties:
             return
-        model = TextEmbeddingModel.from_pretrained(_EMBEDDING_MODEL)
+        model = _get_model()
         texts = [_property_to_text(p) for p in properties]
         inputs = [TextEmbeddingInput(t, "RETRIEVAL_DOCUMENT") for t in texts]
         self._embeddings = [e.values for e in model.get_embeddings(inputs)]
@@ -29,7 +37,7 @@ class PropertyRAG:
     def search(self, query: str, top_k: int = 3) -> list[dict]:
         if not self._embeddings:
             return self._properties[:top_k]
-        model = TextEmbeddingModel.from_pretrained(_EMBEDDING_MODEL)
+        model = _get_model()
         query_emb = model.get_embeddings([TextEmbeddingInput(query, "RETRIEVAL_QUERY")])[0].values
         ranked = sorted(
             zip(self._embeddings, self._properties),

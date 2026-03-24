@@ -56,12 +56,13 @@ def _build_system_prompt(language: str | None) -> str:
         "  1. The primary image (use sizes.medium.webp if available, otherwise fall back to url).\n"
         "     Image URLs are already full URLs — use them directly as-is.\n"
         "     If a property has no images, omit the image tag.\n"
-        f"  2. The property title as an HTML anchor linking to {frontend_url}/properties/<id>\n"
+        f"  2. The property title as a bold HTML anchor linking to {frontend_url}/properties/<id>\n"
         "  3. City, type, price per month and status as a short line of text.\n"
         "Example card (image URL comes directly from the API response — never invent one):\n"
         f'<a href="{frontend_url}/properties/4"><img src="{{images[0].sizes.medium.webp}}" alt="Penthouse — Punavuori" /></a>\n'
-        f'<a href="{frontend_url}/properties/4">Penthouse — Punavuori</a> · Helsinki · apartment · €3500/mo · available\n'
-        "When presenting an order, include order ID, property name, dates, status and total price.\n"
+        f'<strong><a href="{frontend_url}/properties/4">Penthouse — Punavuori</a></strong> · Helsinki · apartment · €3500/mo · available\n'
+        "When presenting an order, include order ID (bold), property name, dates, status and total price.\n"
+        "Example order: <strong>Order #42</strong> · Penthouse — Punavuori · 2024-06-01–2024-06-30 · <strong>approved</strong> · €3500\n"
         "Users may describe properties informally or colloquially. Always interpret such descriptions as property search requests.\n"
         "Examples: 'threesome' or 'kolmio' means a 3-bedroom/3-room apartment, 'kaksi' means 2 rooms, 'with a sauna' means sauna amenity required.\n"
         "Never refuse a property search request due to informal language — always translate it into a search.\n"
