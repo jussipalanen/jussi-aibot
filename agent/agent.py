@@ -4,8 +4,10 @@ import re
 import vertexai
 from vertexai.generative_models import GenerativeModel
 from agent.client import JussispaceClient
+from agent.rag import PropertyRAG
 
 _client = JussispaceClient()
+_rag = PropertyRAG()
 
 _SUPPORTED_LANGUAGES = {"fi", "en"}
 
@@ -45,11 +47,26 @@ def _build_system_prompt(language: str | None) -> str:
     else:
         lang = "Always respond in the same language the user writes in."
 
+    frontend_url = os.getenv("JUSSISPACE_FRONTEND_URL", "https://jussispace-production.lab.jussialanen.com").rstrip("/")
+
     return (
         "You are a helpful assistant for JussiSpace, a property rental service.\n"
         "You help users search for properties and check their order or booking status.\n"
-        "When presenting properties, include title, city, type, price and status.\n"
-        "When presenting an order, include order ID, property name, dates, status and total price.\n"
+        "When presenting properties, format each one as an HTML card with:\n"
+        "  1. The primary image (use sizes.medium.webp if available, otherwise fall back to url).\n"
+        "     Image URLs are already full URLs — use them directly as-is.\n"
+        "     If a property has no images, omit the image tag.\n"
+        f"  2. The property title as a bold HTML anchor linking to {frontend_url}/properties/<id>\n"
+        "  3. City, type, price per month and status as a short line of text.\n"
+        "Example card (image URL comes directly from the API response — never invent one):\n"
+        f'<a href="{frontend_url}/properties/4"><img src="{{images[0].sizes.medium.webp}}" alt="Penthouse — Punavuori" /></a>\n'
+        f'<strong><a href="{frontend_url}/properties/4">Penthouse — Punavuori</a></strong> · Helsinki · apartment · €3500/mo · available\n'
+        "When presenting an order, include order ID (bold), property name, dates, status and total price.\n"
+        "Example order: <strong>Order #42</strong> · Penthouse — Punavuori · 2024-06-01–2024-06-30 · <strong>approved</strong> · €3500\n"
+        "Users may describe properties informally or colloquially. Always interpret such descriptions as property search requests.\n"
+        "Examples: 'threesome' or 'kolmio' means a 3-bedroom/3-room apartment, 'kaksi' means 2 rooms, 'with a sauna' means sauna amenity required.\n"
+        "Never refuse a property search request due to informal language — always translate it into a search.\n"
+        "Never ask the user for more details before searching. Always call search_properties immediately with whatever information is available, then present the results.\n"
         f"{lang}\n\n"
         f"{_TOOLS_SPEC}"
     )
@@ -118,15 +135,25 @@ def ask(
         if parsed.get("type") == "tool_call":
             tool_name = parsed.get("tool", "")
             params = parsed.get("params", {})
-            tool_result = _client.call_tool(tool_name, params)
 
-            tool_result_str = json.dumps(tool_result, ensure_ascii=False)[:2000]
+            if tool_name == "search_properties":
+                all_props = _client.call_tool("search_properties", params)
+                properties = all_props.get("data", [])
+                if _rag.is_stale():
+                    _rag.build(properties)
+                matched = _rag.search(user_message, top_k=3)
+                tool_result = {"data": matched, "total": len(matched)}
+            else:
+                tool_result = _client.call_tool(tool_name, params)
+
+            tool_result_str = json.dumps(tool_result, ensure_ascii=False)[:50000]
             messages.append({"role": "assistant", "content": response_text})
             messages.append({
                 "role": "user",
                 "content": (
                     f"Tool '{tool_name}' returned: {tool_result_str}\n\n"
-                    "Now provide the final answer to the user."
+                    f"The user's original message was: \"{user_message}\"\n"
+                    "Now provide the final answer to the user. You MUST respond in the exact same language the user wrote in."
                 ),
             })
         else:

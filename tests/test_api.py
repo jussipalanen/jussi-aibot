@@ -3,7 +3,7 @@ API endpoint tests using FastAPI's TestClient.
 External AI providers are mocked so no real credentials are needed.
 """
 import io
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -146,5 +146,62 @@ def test_review_response_shape(client: TestClient) -> None:
     data = response.json()
     for key in ("stars", "rating_text", "summary", "strengths", "weaknesses", "provider_raw_output"):
         assert key in data, f"Missing key: {key}"
+
+
+# ── /ai/chat ───────────────────────────────────────────────────────────────
+
+def test_chat_unknown_handler(client: TestClient) -> None:
+    response = client.post("/ai/chat", json={"handler": "unknown", "message": "hi"})
+    assert response.status_code == 400
+    assert "Unknown handler" in response.json()["detail"]
+
+
+def test_chat_jussispace_returns_reply(client: TestClient) -> None:
+    with patch("agent.agent.ask", return_value="Löysin 3 asuntoa sinulle."):
+        response = client.post(
+            "/ai/chat",
+            json={"handler": "jussispace", "message": "Haluan kolmen kimppaa saunan kera."},
+        )
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Löysin 3 asuntoa sinulle."
+
+
+def test_chat_jussispace_with_language(client: TestClient) -> None:
+    with patch("agent.agent.ask", return_value="Here are some properties.") as mock_ask:
+        response = client.post(
+            "/ai/chat",
+            json={"handler": "jussispace", "message": "Find me a flat", "language": "en"},
+        )
+    assert response.status_code == 200
+    mock_ask.assert_called_once_with("Find me a flat", language="en", history=[])
+
+
+def test_chat_jussispace_with_history(client: TestClient) -> None:
+    history = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello!"}]
+    with patch("agent.agent.ask", return_value="Here are results.") as mock_ask:
+        response = client.post(
+            "/ai/chat",
+            json={"handler": "jussispace", "message": "Show flats", "history": history},
+        )
+    assert response.status_code == 200
+    mock_ask.assert_called_once_with("Show flats", language=None, history=history)
+
+
+def test_chat_agent_runtime_error_returns_503(client: TestClient) -> None:
+    with patch("agent.agent.ask", side_effect=RuntimeError("GCP_PROJECT not set")):
+        response = client.post(
+            "/ai/chat",
+            json={"handler": "jussispace", "message": "test"},
+        )
+    assert response.status_code == 503
+
+
+def test_chat_agent_unexpected_error_returns_502(client: TestClient) -> None:
+    with patch("agent.agent.ask", side_effect=Exception("Vertex AI blew up")):
+        response = client.post(
+            "/ai/chat",
+            json={"handler": "jussispace", "message": "test"},
+        )
+    assert response.status_code == 502
 
 

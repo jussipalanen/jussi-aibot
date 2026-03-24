@@ -1,6 +1,6 @@
-# Jussi AI-BOT: AI-Powered Resume Review Service
+# Jussi AI-BOT: Multi-Purpose AI Agent Platform
 
-An intelligent FastAPI service that uses AI to analyze and review resumes. Upload your resume and get instant feedback with ratings, strengths, weaknesses, and actionable improvements.
+A FastAPI service powering multiple AI agents — property search and booking assistance for JussiSpace, professional CV Q&A for JussiMatic, and intelligent resume review. Built on Google Vertex AI (Gemini) with support for multiple AI providers.
 
 ## Key Features
 
@@ -193,7 +193,7 @@ A multi-handler conversational AI endpoint powered by Google Vertex AI (Gemini).
 
 | Handler | Description |
 | --- | --- |
-| `jussispace` | Search properties and check order status in JussiSpace |
+| `jussispace` | Search properties and check order status in JussiSpace — uses RAG (vector embeddings via Vertex AI `text-embedding-004`) for semantic property matching |
 | `jussimatic-ai-cv-chat` | Q&A about Jussi Alanen's CV and professional background |
 
 ### API endpoint
@@ -251,7 +251,7 @@ All of these must be set in `.env`:
 | `GCP_KEY_PATH` | Path to service account key **on the host** (Docker mount) | `./secrets/gcp-key.json` |
 | `AGENT_EMAIL` | JussiSpace agent login email | `agent@example.com` |
 | `AGENT_PASSWORD` | JussiSpace agent password — **wrap in single quotes** if it contains `$` | `'p@$$word'` |
-| `JUSSISPACE_API_URL` | JussiSpace backend base URL | `https://backend-lab-jussispace.jussialanen.com/api` |
+| `JUSSISPACE_API_URL` | JussiSpace backend base URL | `https://backend-lab-jussispace.jussialanen.com/api` — **WSL2 + Docker:** use `http://host.docker.internal:3000/api` to reach a locally running backend; `localhost` and WSL2 IPs are not reachable from inside a container |
 | `JUSSIMATIC_CV_API_URL` | Jussimatic CV API URL (full URL with code param) | `https://backend-laravel.dev.jussialanen.com/api/resumes/current?owner=...&code=...` |
 
 Optional (defaults shown):
