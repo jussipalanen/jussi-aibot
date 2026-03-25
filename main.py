@@ -36,6 +36,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_robots_header(request, call_next) -> Response:
+    """Attach X-Robots-Tag header to every response to prevent search engine indexing."""
     response = await call_next(request)
     response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
     return response

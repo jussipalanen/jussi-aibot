@@ -14,12 +14,14 @@ import pdfplumber
 from docx import Document
 
 def _local_model_disabled() -> bool:
+    """Return True if the local model is disabled via the DISABLE_LOCAL_MODEL env var."""
     value = os.getenv("DISABLE_LOCAL_MODEL", "").strip().lower()
     return value in {"1", "true", "yes", "on"}
 
 
 @lru_cache(maxsize=1)
 def _get_local_model():
+    """Load and cache the local Finnish language model. Raises 503 if disabled."""
     if _local_model_disabled():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

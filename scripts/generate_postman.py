@@ -21,6 +21,7 @@ from main import app
 
 
 def _build_item(path: str, method: str, operation: dict, base_url: str) -> dict:
+    """Convert a single OpenAPI operation into a Postman collection item."""
     name = operation.get("summary") or f"{method.upper()} {path}"
     description = operation.get("description", "")
 
@@ -94,6 +95,7 @@ def _build_item(path: str, method: str, operation: dict, base_url: str) -> dict:
 
 
 def _example_from_schema(schema: dict) -> object:
+    """Recursively generate a placeholder example value from a JSON Schema definition."""
     t = schema.get("type")
     if t == "object":
         return {k: _example_from_schema(v) for k, v in schema.get("properties", {}).items()}
@@ -109,6 +111,7 @@ def _example_from_schema(schema: dict) -> object:
 
 
 def build_collection(base_url: str) -> dict:
+    """Build a full Postman Collection v2.1 dict from the FastAPI OpenAPI schema."""
     openapi = app.openapi()
     info = openapi.get("info", {})
 
@@ -150,6 +153,7 @@ def build_collection(base_url: str) -> dict:
 
 
 def main() -> None:
+    """Parse CLI arguments, generate the Postman collection, and write it to a file."""
     parser = argparse.ArgumentParser(description="Generate Postman collection from FastAPI OpenAPI schema")
     parser.add_argument("--output", default="postman_collection.json", help="Output file path")
     parser.add_argument("--base-url", default="http://localhost:8080", help="Base URL for requests")

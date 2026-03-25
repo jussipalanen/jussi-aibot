@@ -15,4 +15,5 @@ from main import app
 
 @pytest.fixture(scope="session")
 def client() -> TestClient:
+    """Provide a session-scoped TestClient with server exceptions surfaced as HTTP responses."""
     return TestClient(app, raise_server_exceptions=False)

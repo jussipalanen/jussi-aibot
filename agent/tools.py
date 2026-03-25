@@ -1,3 +1,6 @@
+"""
+Vertex AI FunctionDeclaration definitions for the JussiSpace agent tools.
+"""
 from vertexai.generative_models import FunctionDeclaration, Tool
 
 search_properties = FunctionDeclaration(
