@@ -150,6 +150,7 @@ async def root() -> dict[str, str]:
 
 @router.get("/robots.txt")
 async def robots_txt() -> Response:
+    """Serve robots.txt that disallows all crawlers."""
     content = "User-agent: *\nDisallow: /\n"
     return Response(content=content, media_type="text/plain")
 
@@ -180,11 +181,15 @@ async def version() -> dict[str, str]:
 SUPPORTED_CHAT_HANDLERS = {"jussispace", "jussimatic-ai-cv-chat"}
 
 class ChatHistoryMessage(BaseModel):
+    """A single message in a multi-turn chat history."""
+
     role: str  # "user" or "assistant"
     content: str
 
 
 class ChatRequest(BaseModel):
+    """Request body for the /ai/chat endpoint."""
+
     handler: str  # e.g. "jussispace"
     message: str
     language: str | None = None

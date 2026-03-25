@@ -1,3 +1,7 @@
+"""
+JussiSpace AI agent.
+Handles conversational property search and order queries using Vertex AI (Gemini).
+"""
 import json
 import os
 import re
@@ -42,6 +46,7 @@ To give your final answer respond with:
 
 
 def _build_system_prompt(language: str | None) -> str:
+    """Build the agent system prompt, injecting the appropriate language instruction."""
     if language and language in _SUPPORTED_LANGUAGES:
         lang = _LANGUAGE_INSTRUCTIONS[language]
     else:
@@ -73,6 +78,7 @@ def _build_system_prompt(language: str | None) -> str:
 
 
 def _extract_json(text: str) -> dict | None:
+    """Extract and parse the first JSON object found in text. Returns None if not found or invalid."""
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
         return None
@@ -83,6 +89,7 @@ def _extract_json(text: str) -> dict | None:
 
 
 def _init_vertexai() -> None:
+    """Initialise the Vertex AI SDK with project and location from environment variables."""
     project = os.getenv("GCP_PROJECT", "").strip()
     location = os.getenv("AGENT_GCP_LOCATION", "europe-north1").strip() or "europe-north1"
     if not project:
@@ -125,7 +132,8 @@ def ask(
         )
 
         response = model.generate_content(conversation)
-        response_text = response.text.strip()
+        text_parts = [p.text for p in response.candidates[0].content.parts if hasattr(p, "text")]
+        response_text = text_parts[0].strip() if text_parts else ""
 
         parsed = _extract_json(response_text)
 

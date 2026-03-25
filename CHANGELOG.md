@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.1] - 2026-03-25
+
+### Fixed
+
+- RAG search now indexes room data (`rooms`) alongside amenities — room-based queries (e.g. "3 bedroom apartment") now match correctly
+- Gemini responses with multiple content parts no longer raise `"Multiple content parts are not supported"` — first text part is safely extracted
+- Suppressed CVE-2026-4539 (`pygments`) in `pip-audit` CI steps — no fix version available upstream yet
+
+### Changed
+
+- Added missing docstrings to `agent/`, `services.py`, `routes.py`, `main.py`, `scripts/`, and `tests/`
+
+---
+
 ## [1.2.0] - 2026-03-24
 
 ### Added

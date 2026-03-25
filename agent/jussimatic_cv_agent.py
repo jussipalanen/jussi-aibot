@@ -22,6 +22,7 @@ _CV_CACHE_TTL = 300
 
 
 def _fetch_cv() -> dict:
+    """Fetch Jussi's CV from the API, returning a cached copy if still fresh."""
     now = time.time()
     if _cv_cache["data"] and now - _cv_cache["fetched_at"] < _CV_CACHE_TTL:
         return _cv_cache["data"]
@@ -188,6 +189,7 @@ def _format_cv(cv: dict) -> str:
 
 
 def _init_vertexai() -> None:
+    """Initialise the Vertex AI SDK with project and location from environment variables."""
     project = os.getenv("GCP_PROJECT", "").strip()
     location = os.getenv("AGENT_GCP_LOCATION", "europe-north1").strip() or "europe-north1"
     if not project:

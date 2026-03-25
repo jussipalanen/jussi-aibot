@@ -26,10 +26,11 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit core dependencies
-        run: pip-audit -r requirements.txt
+        # CVE-2026-4539 (pygments): no fix released yet — re-evaluate when pygments >2.19.2 ships
+        run: pip-audit -r requirements.txt --ignore-vuln CVE-2026-4539
 
       - name: Audit ML dependencies
-        run: pip-audit -r requirements-ml.txt
+        run: pip-audit -r requirements-ml.txt --ignore-vuln CVE-2026-4539
 
   # ── 2. Python static security analysis ────────────────────────────────────
   bandit:
