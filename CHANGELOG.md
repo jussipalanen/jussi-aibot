@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.2] - 2026-04-01
+
+### Changed
+
+- Vertex AI SDK initialised once at module load time instead of per-request, eliminating cold-start latency on the first API call
+- Agent modules imported at the top of `routes.py` to match — lazy per-request imports removed
+- CV agent system prompt changed from "concise" to "thorough" — responses are now detailed and complete
+- CV agent default model bumped from `gemini-2.5-flash-lite` to `gemini-2.5-flash`
+
+### Fixed
+
+- Test suite no longer raises `RuntimeError` on import — `GCP_PROJECT` dummy value set in `conftest.py` before app load
+- Test patch targets updated from `agent.agent.ask` to `routes.ask_jussispace` to match the module-level import binding
+
+---
+
 ## [1.2.1] - 2026-03-25
 
 ### Fixed
