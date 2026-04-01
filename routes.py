@@ -19,6 +19,10 @@ from services import (
     generate_review_puter_ai,
     generate_review_vertex_ai
 )
+# Import agents at module level so the Vertex AI SDK loads at startup,
+# not on the first request (which would add several seconds of cold-start latency).
+from agent.agent import ask as ask_jussispace
+from agent.jussimatic_cv_agent import ask as ask_cv
 
 # Constants
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docs", ".docx"}
@@ -211,15 +215,13 @@ async def chat(request: Request, body: ChatRequest) -> dict:
 
     try:
         if body.handler == "jussispace":
-            from agent.agent import ask
-            reply = ask(
+            reply = ask_jussispace(
                 body.message,
                 language=body.language,
                 history=[m.model_dump() for m in body.history],
             )
         elif body.handler == "jussimatic-ai-cv-chat":
-            from agent.jussimatic_cv_agent import ask
-            reply = ask(
+            reply = ask_cv(
                 body.message,
                 language=body.language,
                 history=[m.model_dump() for m in body.history],
