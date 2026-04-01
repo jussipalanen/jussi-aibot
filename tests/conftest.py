@@ -8,6 +8,7 @@ import pytest
 # Set safe defaults before any app import
 os.environ.setdefault("DEFAULT_PROVIDER", "puter_ai")
 os.environ.setdefault("DISABLE_LOCAL_MODEL", "true")
+os.environ.setdefault("GCP_PROJECT", "test-project")
 
 from fastapi.testclient import TestClient
 from main import app
