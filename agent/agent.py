@@ -97,6 +97,10 @@ def _init_vertexai() -> None:
     vertexai.init(project=project, location=location)
 
 
+# Initialise once at import time so the first request does not pay the SDK startup cost.
+_init_vertexai()
+
+
 def ask(
     user_message: str,
     language: str | None = None,
@@ -111,8 +115,6 @@ def ask(
         history: Optional list of previous messages for multi-turn chat.
                  Each item: {"role": "user"|"assistant", "content": "..."}
     """
-    _init_vertexai()
-
     system_prompt = _build_system_prompt(language)
     model_name = os.getenv("JUSSISPACE_VERTEX_MODEL", os.getenv("AGENT_VERTEX_MODEL", "gemini-2.5-flash-lite")).strip() or "gemini-2.5-flash-lite"
     model = GenerativeModel(model_name, system_instruction=system_prompt)

@@ -157,7 +157,7 @@ def test_chat_unknown_handler(client: TestClient) -> None:
 
 
 def test_chat_jussispace_returns_reply(client: TestClient) -> None:
-    with patch("agent.agent.ask", return_value="Löysin 3 asuntoa sinulle."):
+    with patch("routes.ask_jussispace", return_value="Löysin 3 asuntoa sinulle."):
         response = client.post(
             "/ai/chat",
             json={"handler": "jussispace", "message": "Haluan kolmen kimppaa saunan kera."},
@@ -167,7 +167,7 @@ def test_chat_jussispace_returns_reply(client: TestClient) -> None:
 
 
 def test_chat_jussispace_with_language(client: TestClient) -> None:
-    with patch("agent.agent.ask", return_value="Here are some properties.") as mock_ask:
+    with patch("routes.ask_jussispace", return_value="Here are some properties.") as mock_ask:
         response = client.post(
             "/ai/chat",
             json={"handler": "jussispace", "message": "Find me a flat", "language": "en"},
@@ -178,7 +178,7 @@ def test_chat_jussispace_with_language(client: TestClient) -> None:
 
 def test_chat_jussispace_with_history(client: TestClient) -> None:
     history = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello!"}]
-    with patch("agent.agent.ask", return_value="Here are results.") as mock_ask:
+    with patch("routes.ask_jussispace", return_value="Here are results.") as mock_ask:
         response = client.post(
             "/ai/chat",
             json={"handler": "jussispace", "message": "Show flats", "history": history},
@@ -188,7 +188,7 @@ def test_chat_jussispace_with_history(client: TestClient) -> None:
 
 
 def test_chat_agent_runtime_error_returns_503(client: TestClient) -> None:
-    with patch("agent.agent.ask", side_effect=RuntimeError("GCP_PROJECT not set")):
+    with patch("routes.ask_jussispace", side_effect=RuntimeError("GCP_PROJECT not set")):
         response = client.post(
             "/ai/chat",
             json={"handler": "jussispace", "message": "test"},
@@ -197,7 +197,7 @@ def test_chat_agent_runtime_error_returns_503(client: TestClient) -> None:
 
 
 def test_chat_agent_unexpected_error_returns_502(client: TestClient) -> None:
-    with patch("agent.agent.ask", side_effect=Exception("Vertex AI blew up")):
+    with patch("routes.ask_jussispace", side_effect=Exception("Vertex AI blew up")):
         response = client.post(
             "/ai/chat",
             json={"handler": "jussispace", "message": "test"},

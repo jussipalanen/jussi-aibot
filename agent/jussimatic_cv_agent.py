@@ -197,6 +197,10 @@ def _init_vertexai() -> None:
     vertexai.init(project=project, location=location)
 
 
+# Initialise once at import time so the first request does not pay the SDK startup cost.
+_init_vertexai()
+
+
 def ask(
     user_message: str,
     language: str | None = None,
@@ -210,8 +214,6 @@ def ask(
         language: Optional — 'fi' or 'en'. Mirrors user language when omitted.
         history: Optional previous messages for multi-turn chat.
     """
-    _init_vertexai()
-
     cv_data = _fetch_cv()
     cv_text = _format_cv(cv_data)
 
@@ -234,14 +236,14 @@ def ask(
     system_prompt = (
         "You are a helpful AI assistant representing Jussi Alanen's CV and professional background.\n"
         "Answer questions about Jussi's skills, work experience, education, awards, and contact details.\n"
-        "Be friendly, professional and concise. Base your answers only on the CV data provided.\n"
+        "Be friendly, professional and thorough. Provide detailed, complete answers — do not cut information short. Base your answers only on the CV data provided.\n"
         "If asked about something not in the CV, say you don't have that information.\n"
         f"{photo_instruction}"
         f"{lang_instruction}\n\n"
         f"CV DATA:\n{cv_text}"
     )
 
-    model_name = os.getenv("JUSSIMATIC_CV_VERTEX_MODEL", os.getenv("AGENT_VERTEX_MODEL", "gemini-2.5-flash-lite")).strip() or "gemini-2.5-flash-lite"
+    model_name = os.getenv("JUSSIMATIC_CV_VERTEX_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     model = GenerativeModel(model_name, system_instruction=system_prompt)
 
     # Keep last 10 history messages to cap token usage
