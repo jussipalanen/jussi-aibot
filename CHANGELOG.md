@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.3] - 2026-04-07
+
+### Changed
+
+- Cloud Run `--min-instances` set to `0` — service scales to zero when idle, eliminating idle billing for the portfolio deployment
+- Cloud Run `--concurrency` raised from `5` to `20` — handles portfolio traffic on a single instance without unnecessary scaling
+
+---
+
 ## [1.2.2] - 2026-04-01
 
 ### Changed
