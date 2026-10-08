@@ -8,7 +8,8 @@ A configurable AI agent platform built with FastAPI. It runs **chat agents** tha
 - 📝 **Document reviews** — 0–5 stars, summary, strengths and weaknesses, per rubric and language
 - 🧠 **Many AI providers** — Gemini (API key or Vertex AI), Puter, OpenAI, Groq, OpenRouter, Mistral, Ollama
 - 🔐 **Per-client API keys** — each client gets its own agents, origins and rate limit
-- 📄 **PDF, DOC and DOCX** uploads
+- 📄 **PDF, DOC and DOCX** uploads, or plain text
+- 🌐 **Review demo** — a browser form in Finnish and English at `/demo/review`
 
 ## API documentation
 
@@ -17,11 +18,12 @@ The API documents itself. Open the root URL for a home page with links, or go st
 | | Local | Production (Cloud Run) |
 |---|---|---|
 | Home page | [`localhost:8080/`](http://localhost:8080/) | [`/`](https://jussi-aibot-production-61766311353.europe-north1.run.app/) |
+| **Review demo** (CV & application review) | [`localhost:8080/demo/review`](http://localhost:8080/demo/review) | [`/demo/review`](https://jussi-aibot-production-61766311353.europe-north1.run.app/demo/review) |
 | **Swagger UI** (try requests in the browser) | [`localhost:8080/docs`](http://localhost:8080/docs) | [`/docs`](https://jussi-aibot-production-61766311353.europe-north1.run.app/docs) |
 | ReDoc (readable reference) | [`localhost:8080/redoc`](http://localhost:8080/redoc) | [`/redoc`](https://jussi-aibot-production-61766311353.europe-north1.run.app/redoc) |
 | OpenAPI JSON | [`localhost:8080/openapi.json`](http://localhost:8080/openapi.json) | [`/openapi.json`](https://jussi-aibot-production-61766311353.europe-north1.run.app/openapi.json) |
 
-On Render the same paths work on your service URL, e.g. `https://<your-service>.onrender.com/docs`.
+On Render the same paths work on your service URL, e.g. `https://<your-service>.onrender.com/docs` and `https://<your-service>.onrender.com/demo/review`.
 
 In Swagger UI, click **Authorize** and enter your API key to call protected endpoints.
 
@@ -112,6 +114,15 @@ curl -X POST http://localhost:8080/v1/review \
   "strengths": ["Clear structure", "Measurable achievements", "Relevant skills"],
   "weaknesses": ["Summary could be shorter", "Education dates missing"]
 }
+```
+
+Send the document as `file` (PDF, DOC, DOCX) **or** as plain text in `text` (up to 100 000 characters):
+
+```bash
+curl -X POST http://localhost:8080/v1/review \
+  -H "Authorization: Bearer $API_KEY" \
+  -F "rubric=cover-letter-fi" \
+  -F "text=Hei, haen backend-kehittäjän tehtävää..."
 ```
 
 Optional form fields: `provider` (defaults to `REVIEW_PROVIDER`) and `model`.
@@ -222,9 +233,30 @@ Each file in `config/rubrics/` is a rubric:
 |---|---|---|
 | `cv-fi` | Finnish | CVs (falls back to keyword scoring if the model returns no JSON) |
 | `cv-en` | English | CVs |
-| `cover-letter-en` | English | Cover letters |
+| `cover-letter-fi` | Finnish | Job applications |
+| `cover-letter-en` | English | Job applications |
 
-Add your own by copying one: set `id`, `language`, six `labels` (for 0–5 stars) and a `prompt` that contains `{document_text}` and asks for JSON with `stars`, `summary`, `strengths` and `weaknesses`.
+Add your own by copying one: set `id`, `language`, six `labels` (for 0–5 stars) and a `prompt` that contains `{document_text}` and asks for JSON with `stars`, `summary`, `strengths` and `weaknesses`. Name it `<type>-<language>` (e.g. `portfolio-fi`) so the demo page groups the language versions under one document type.
+
+### Review demo (`/demo/review`)
+
+A browser page for trying reviews, linked from the home page:
+
+- Drag and drop a PDF, DOC or DOCX file, or paste the text
+- Choose the document type: CV or job application
+- **Suomi / English** switch for the page and the review language. The default comes from `?lang=fi` or `?lang=en`, the visitor's last choice, or the browser language.
+- Shows the stars, rating, summary, strengths and areas to improve
+
+Who can use it:
+
+| Setting | Effect |
+|---|---|
+| No clients configured (local dev) | Works without a key |
+| Keys configured, `DEMO_PUBLIC=false` (default) | Visitors enter an API key under **API key** on the page |
+| `DEMO_PUBLIC=true` | Works without a key from the page itself, for reviews only, limited by `DEMO_RATE_LIMIT` (default `10/day`) |
+| `DEMO_ENABLED=false` | Page and home page link removed |
+
+With `DEMO_PUBLIC=true`, anyone can use your AI quota up to the demo limit. Set `FORWARDED_IP_DEPTH` so the limit applies per visitor rather than to everyone together (see **Rate limits**).
 
 ### Legacy `POST /ai/review`
 
@@ -307,6 +339,9 @@ How a request is matched:
 | No key, `Origin` of a client that has a key | ❌ `401` |
 | Wrong key | ❌ `401` |
 | Unknown origin | ❌ `403` |
+| No key, from the service's own pages, `DEMO_PUBLIC=true` | ✅ demo client: reviews only, `DEMO_RATE_LIMIT` |
+
+Requests from the service's own pages (the review demo) are never rejected for their origin, so a valid key always works there.
 
 The `Origin` header can be faked by scripts, so browser-only clients are best for low-risk agents with tight rate limits. Keep keys on servers, never in browser JavaScript.
 
@@ -350,6 +385,8 @@ Create one in [Google AI Studio](https://aistudio.google.com/apikey). No Google 
    | `ALLOWED_ORIGINS` | Your frontends, comma-separated, e.g. `https://jussimatic.com,https://jussispace.com` |
    | `PUTER_API_KEY` | Optional; only for `provider=puter_ai` |
 
+   The Blueprint sets `DEMO_PUBLIC=true`, so visitors can use the review demo without a key (20 reviews a day in total until `FORWARDED_IP_DEPTH` is set). Set it to `false` to require a key.
+
 4. Click **Apply**. The first build takes a few minutes.
 
 Prefer the dashboard? **New → Web Service → Docker**, set the health check path to `/health`, and add the variables from `render.yaml` under **Environment**.
@@ -362,7 +399,7 @@ curl $BASE/health                                              # {"status":"ok"}
 curl -H "Authorization: Bearer $AI_SECRET_KEY" $BASE/v1/providers   # gemini: configured true
 ```
 
-Then open `$BASE/docs`, click **Authorize**, and try `POST /v1/agents/jussispace/chat`.
+Then open `$BASE/demo/review` and review a CV, or open `$BASE/docs`, click **Authorize**, and try `POST /v1/agents/jussispace/chat`.
 
 ### 4. Point your frontends at Render
 
@@ -476,6 +513,9 @@ See `.env.example` for a commented template.
 | `DAILY_RATE_LIMIT` | `50/day` | Default rate limit |
 | `FORWARDED_IP_DEPTH` | `0` | Client IP position in `X-Forwarded-For` from the right |
 | `LOG_FORWARDED_FOR` | `false` | Log forwarded headers to find the depth |
+| `DEMO_ENABLED` | `true` | Serve the review demo at `/demo/review` |
+| `DEMO_PUBLIC` | `false` | Allow the demo page without a key (reviews only) |
+| `DEMO_RATE_LIMIT` | `10/day` | Limit for keyless demo reviews |
 
 </details>
 
@@ -491,6 +531,7 @@ pytest tests/test_engine.py -v          # one file
 | File | Covers |
 |---|---|
 | `tests/test_api.py` | Home page, health, legacy `/ai/chat` and `/ai/review` |
+| `tests/test_demo.py` | Review demo page, plain-text reviews, demo access rules |
 | `tests/test_v1.py` | `/v1` endpoints, rubrics, shipped config files |
 | `tests/test_engine.py` | Agent loop, HTTP tools, pagination, login refresh, RAG, context sources |
 | `tests/test_providers.py` | Gemini and OpenAI-compatible message conversion |
@@ -523,7 +564,8 @@ aibot/
   settings.py              Environment settings
   configfile.py            YAML loading with ${ENV} substitution
   security.py              Clients, keys, origins, rate limits
-  api/                     Routes: pages.py (/, /health), v1.py, legacy.py
+  api/                     Routes: pages.py (/, /demo/review, /health), v1.py, legacy.py
+  web/                     Home and demo page templates, CSS and JavaScript
   agents/                  Agent config schema, registry and the shared agent loop
   tools/http.py            Configurable HTTP tools and auth sessions
   knowledge/               RAG ranking, context sources, JSON-to-text rendering

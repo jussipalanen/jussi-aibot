@@ -7,10 +7,12 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from aibot import __version__
 from aibot.agents.registry import AgentRegistry
 from aibot.api import legacy, pages, v1
+from aibot.api.pages import WEB_DIR
 from aibot.api.deps import Services
 from aibot.llm import ProviderRegistry
 from aibot.review.rubrics import load_rubrics
@@ -102,6 +104,7 @@ def create_app(settings: Settings | None = None, providers: ProviderRegistry | N
         response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
         return response
 
+    app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.include_router(pages.router)
     app.include_router(v1.router)
     app.include_router(legacy.router)

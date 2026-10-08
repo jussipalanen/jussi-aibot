@@ -12,6 +12,7 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, status
 from limits import parse
@@ -70,6 +71,12 @@ def _normalize_origin(origin: str) -> str:
     return origin.strip().rstrip("/")
 
 
+def is_same_origin(request: Request, origin: str) -> bool:
+    """True when the `Origin` is this service itself (e.g. the demo page)."""
+    host = request.headers.get("host", "").lower()
+    return bool(origin and host) and urlparse(origin).netloc.lower() == host
+
+
 def load_clients_file(path: Path) -> list[Client]:
     """Parse `clients.yaml`."""
     data = load_yaml(path)
@@ -101,20 +108,27 @@ def load_clients_file(path: Path) -> list[Client]:
 class ClientRegistry:
     """Resolves the client making a request."""
 
-    def __init__(self, clients: list[Client]) -> None:
+    def __init__(self, clients: list[Client], demo_client: Client | None = None) -> None:
         self.clients = clients
+        self.demo_client = demo_client
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "ClientRegistry":
+        demo = None
+        if settings.demo_enabled and settings.demo_public:
+            # The review demo page, without a key: reviews only, with its own limit.
+            parse(settings.demo_rate_limit)
+            demo = Client(id="demo", agents=frozenset(), rubrics=frozenset({"*"}), rate_limit=settings.demo_rate_limit)
+
         if settings.clients_file is not None:
-            return cls(load_clients_file(settings.clients_file))
+            return cls(load_clients_file(settings.clients_file), demo)
         if settings.ai_secret_key or settings.allowed_origins:
             return cls([Client(
                 id="default",
                 key_hash=hash_key(settings.ai_secret_key) if settings.ai_secret_key else "",
                 origins=frozenset(settings.allowed_origins),
-            )])
-        return cls([])
+            )], demo)
+        return cls([], demo)
 
     @property
     def open_access(self) -> bool:
@@ -131,7 +145,8 @@ class ClientRegistry:
         - A bearer key identifies its client. If that client lists origins and the
           request has an `Origin` header, the origin must be one of them.
         - Without a key, the `Origin` must belong to a client that has no key
-          (a browser-only client).
+          (a browser-only client), or be this service itself when DEMO_PUBLIC is on.
+        - Requests from this service's own pages are never rejected for their origin.
         """
         if self.open_access:
             return ANONYMOUS
@@ -149,7 +164,7 @@ class ClientRegistry:
             )
             if client is None:
                 raise _unauthorized("Invalid key.")
-            if origin and client.origins and origin not in client.origins:
+            if origin and client.origins and origin not in client.origins and not is_same_origin(request, origin):
                 raise _forbidden()
             return client
 
@@ -157,7 +172,9 @@ class ClientRegistry:
             for client in self.clients:
                 if not client.key_hash and origin in client.origins:
                     return client
-            if any(origin in client.origins for client in self.clients):
+            if self.demo_client and is_same_origin(request, origin):
+                return self.demo_client
+            if is_same_origin(request, origin) or any(origin in client.origins for client in self.clients):
                 raise _unauthorized("Missing or invalid Authorization header. Expected: Bearer <key>")
             raise _forbidden()
 

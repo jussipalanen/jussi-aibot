@@ -53,6 +53,9 @@ class Settings:
     legacy_vertex_prompt_max_chars: int
     ai_secret_key: str
     allowed_origins: tuple[str, ...]
+    demo_enabled: bool
+    demo_public: bool
+    demo_rate_limit: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -92,4 +95,7 @@ class Settings:
             legacy_vertex_prompt_max_chars=env_int("VERTEX_PROMPT_MAX_CHARS", 6000),
             ai_secret_key=env("AI_SECRET_KEY"),
             allowed_origins=tuple(o.rstrip("/") for o in env_list("ALLOWED_ORIGINS")),
+            demo_enabled=env_bool("DEMO_ENABLED", True),
+            demo_public=env_bool("DEMO_PUBLIC"),
+            demo_rate_limit=env("DEMO_RATE_LIMIT", "10/day"),
         )
