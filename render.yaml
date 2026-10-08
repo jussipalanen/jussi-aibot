@@ -1,0 +1,56 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# In Render: New → Blueprint → pick this repository. Values with `sync: false`
+# are asked for when the Blueprint is created and can be changed later under
+# the service's Environment tab.
+services:
+  - type: web
+    name: jussi-aibot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    branch: main
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # ── AI ──────────────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PUTER_API_KEY
+        sync: false
+      - key: DEFAULT_PROVIDER        # legacy /ai/review → Gemini
+        value: vertex_ai
+      - key: REVIEW_PROVIDER         # /v1/review
+        value: gemini
+      - key: DISABLE_LOCAL_MODEL
+        value: "true"
+      - key: AGENT_VERTEX_MODEL
+        value: gemini-2.5-flash-lite
+      - key: JUSSIMATIC_CV_VERTEX_MODEL
+        value: gemini-2.5-flash
+
+      # ── Agents ──────────────────────────────────────────────────────────
+      - key: JUSSISPACE_API_URL
+        value: https://backend-lab-jussispace.jussialanen.com/api
+      - key: JUSSISPACE_FRONTEND_URL
+        value: https://jussispace-production.lab.jussialanen.com
+      - key: AGENT_EMAIL
+        sync: false
+      - key: AGENT_PASSWORD
+        sync: false
+      - key: JUSSIMATIC_CV_API_URL
+        sync: false
+      - key: JUSSILOG_STORAGE_BASE_URL
+        value: https://jussilog-backend-uploads.storage.googleapis.com
+
+      # ── Access ──────────────────────────────────────────────────────────
+      # Simple setup: one key and/or a list of origins. For per-client keys,
+      # add a Secret File named clients.yaml and set CLIENTS_FILE instead.
+      - key: AI_SECRET_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: DAILY_RATE_LIMIT
+        value: 50/day
+      - key: FORWARDED_IP_DEPTH
+        value: "0"

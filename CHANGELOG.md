@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.0.0] - 2026-10-08
+
+The service is now a configurable platform: agents, tools, RAG and review rubrics are defined in YAML instead of Python. The `/ai/chat` and `/ai/review` endpoints keep their requests and responses.
+
+### Added
+
+- `/v1` API: `GET /v1/agents`, `POST /v1/agents/{agent_id}/chat`, `GET /v1/review/rubrics`, `POST /v1/review`, `GET /v1/providers`
+- Agent definitions in `config/agents/*.yaml`: prompt, provider, model, languages, HTTP tools, auth profiles, pagination, RAG and context sources, with `${ENV}` substitution
+- One shared agent loop with native tool calling, replacing the hand-written JSON tool protocol
+- Provider layer (`aibot/llm`): Gemini via `google-genai` (API key or Vertex AI), OpenAI-compatible services (OpenAI, Groq, OpenRouter, Mistral, Ollama, custom), Puter and the local model
+- Review rubrics in `config/rubrics/*.yaml`: `cv-fi`, `cv-en`, `cover-letter-en`
+- Per-client API keys, origins, allowed agents and rubrics, and rate limits (`config/clients.yaml` or `CLIENTS_FILE`)
+- `FORWARDED_IP_DEPTH` and `LOG_FORWARDED_FOR` for per-user rate limits behind a proxy
+- Home page at `/` with links to `/docs`, `/redoc` and `/openapi.json`; JSON when requested with `Accept: application/json`
+- Bearer auth in the OpenAPI schema, so `/docs` has an **Authorize** button
+- Render Blueprint (`render.yaml`) and Render setup instructions
+
+### Changed
+
+- `google-cloud-aiplatform` replaced by `google-genai`; Cloud Run keeps using Vertex AI with its service account, and any host can use `GEMINI_API_KEY`
+- RAG embeddings use `gemini-embedding-001` and are cached by content
+- AI and backend calls are asynchronous, and file text extraction runs in a worker thread, so one slow request no longer blocks the server
+- Agents and providers start on first use; a missing `GCP_PROJECT` no longer stops the app from starting (unconfigured providers answer `503`)
+- `slowapi` replaced by `limits`; rate limits are counted per client, IP and endpoint group
+- Code moved into the `aibot` package; `routes.py`, `services.py`, `model.py` and `agent/` removed
+- README reorganised into collapsible sections
+
+### Fixed
+
+- RAG reused the first search's results for 30 minutes, so a later search (e.g. another city) could get the wrong properties
+- With both `AI_SECRET_KEY` and `ALLOWED_ORIGINS` set, server-to-server calls with a valid key were rejected for having no `Origin` header
+- The JussiSpace login token was never refreshed; tools now log in again after a `401`
+- Unreadable uploads return `400` instead of `500`
+
+---
+
 ## [1.2.3] - 2026-04-07
 
 ### Changed
