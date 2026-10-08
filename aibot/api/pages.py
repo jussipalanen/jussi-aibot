@@ -97,8 +97,12 @@ async def robots_txt() -> Response:
 
 
 @router.get("/health", summary="Health check")
+@router.head("/health", include_in_schema=False)
 async def health() -> dict[str, str]:
-    """Returns `ok` when the service is running. Makes no AI calls."""
+    """Returns `ok` when the service is running. Makes no AI calls.
+
+    Also answers `HEAD`, which uptime monitors such as UptimeRobot send by default.
+    """
     return {"status": "ok"}
 
 
