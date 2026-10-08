@@ -1,0 +1,26 @@
+# API clients. Copy to config/clients.yaml (or point CLIENTS_FILE at it, e.g. a
+# Render Secret File at /etc/secrets/clients.yaml). Without this file the old
+# AI_SECRET_KEY + ALLOWED_ORIGINS settings are used.
+#
+# Each client has:
+#   key / key_sha256  API key for server-to-server calls (send "Authorization: Bearer <key>").
+#                     Prefer key_sha256 so the file holds no secrets:
+#                       python -c "import hashlib,sys;print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" <key>
+#                     or reference an env var: key: ${MY_CLIENT_KEY}
+#   origins           Browser origins. A client with origins and no key is a browser
+#                     client: requests from these origins need no key. A client with
+#                     both must send the key, and the Origin (if any) must match.
+#   agents / rubrics  Ids it may use, or ["*"] for all (default).
+#   rate_limit        e.g. 50/day, 10/hour. Defaults to DAILY_RATE_LIMIT.
+clients:
+  - id: jussimatic-backend
+    key: ${JUSSIMATIC_API_KEY}
+    agents: [jussimatic-ai-cv-chat]
+    rubrics: ["*"]
+    rate_limit: 500/day
+
+  - id: jussispace-web
+    origins: [https://jussispace-production.lab.jussialanen.com, http://localhost:3000]
+    agents: [jussispace]
+    rubrics: []
+    rate_limit: 50/day

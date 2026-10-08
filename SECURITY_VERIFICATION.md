@@ -1,183 +1,60 @@
-# Origin-Based Access Control Security Verification
+# Access Control
 
-## ✅ Security Status: VERIFIED
+How the API decides who may call it. The code is in `aibot/security.py`; the tests are in `tests/test_security.py`.
 
-The origin-based access control implementation has been thoroughly tested and verified to be secure.
+## Clients
 
-## What Was Tested
+A **client** is one caller of the API, such as a backend or a website. Each client has:
 
-### 1. Exact Origin Matching
-- ✅ **Exact match allowed**: `http://localhost:3000` → ALLOWED
-- ✅ **Trailing slash handled**: `http://localhost:3000/` → ALLOWED
-- ✅ **Different port blocked**: `http://localhost:3001` → BLOCKED
-- ✅ **HTTP vs HTTPS strict**: `http://` vs `https://` → BLOCKED (must match exactly)
+| Field | Meaning |
+|---|---|
+| `key` / `key_sha256` | API key for server-to-server calls, sent as `Authorization: Bearer <key>` |
+| `origins` | Browser origins the client may call from |
+| `agents`, `rubrics` | What it may use (`*` = everything) |
+| `rate_limit` | Its own limit, e.g. `50/day` |
 
-### 2. Attack Prevention
-- ✅ **Prefix attack blocked**: `http://localhost:3000.evil.com` → BLOCKED
-- ✅ **Suffix attack blocked**: `http://localhost:3000-evil.com` → BLOCKED  
-- ✅ **Subdomain blocked**: `app.example.com` when only `example.com` allowed → BLOCKED
-- ✅ **Empty origin blocked**: No API key required if origin missing → BLOCKED
+Clients come from `config/clients.yaml` (or `CLIENTS_FILE`). Without that file, `AI_SECRET_KEY` and `ALLOWED_ORIGINS` define a single client. With neither, the API is open — for local development only.
 
-### 3. Multiple Origins
-- ✅ Can specify multiple allowed origins (comma-separated)
-- ✅ Each origin is matched independently and securely
-- ✅ Origins not in the list are blocked
+## How a request is matched
 
-### 4. Referer Header Parsing
-- ✅ Correctly extracts origin from referer (scheme + host + port only)
-- ✅ Removes path and query parameters
-- ✅ Handles referer as fallback when Origin header missing
+| Request | Result |
+|---|---|
+| Bearer key matches a client | ✅ That client. If the client lists origins and the request has an `Origin` header, it must be one of them, otherwise `403`. |
+| No key, `Origin` belongs to a client without a key | ✅ That browser client |
+| No key, `Origin` belongs to a client with a key | ❌ `401` — the key is required |
+| No key and no known origin | ❌ `401` (no `Origin`) or `403` (unknown `Origin`) |
+| Invalid key or malformed `Authorization` header | ❌ `401` |
 
-## Implementation Details
+Details:
 
-### In `main.py` (CORS Configuration)
-```python
-ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
-    if origin.strip()
-]
+- Keys are compared as SHA-256 hashes with `hmac.compare_digest`, so the config can hold hashes instead of keys.
+- Origins must match exactly after removing a trailing slash: scheme, host and port. Prefixes (`https://app.test.evil.test`), other ports and other schemes are rejected.
+- A client can only use the agents and rubrics it lists; others answer `404`, as if they did not exist.
 
-if ALLOWED_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,  # Explicit list only
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["*"],
-    )
-```
+## What origins do and don't protect
 
-**Security:** CORS middleware only allows the specific origins listed. No wildcards, no pattern matching.
+Browsers set the `Origin` header themselves, and JavaScript cannot change it, so a browser client cannot be used from another website. Scripts (curl, servers) can send any `Origin`, so a browser-only client is effectively public. Use browser-only clients for low-risk agents with tight rate limits, and keep API keys on servers — never in browser JavaScript.
 
-### In `routes.py` (API Key Bypass Logic)
-```python
-ALLOWED_ORIGINS = {
-    origin.strip()
-    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
-    if origin.strip()
-}
+## CORS
 
-def verify_api_key(request: Request) -> None:
-    if not REQUIRE_API_KEY:
-        return
+Browsers may call from any origin listed for any client; other origins get no `Access-Control-Allow-Origin` header and the browser blocks the response. Without any origins configured, CORS allows all origins (keys are still required when configured).
 
-    # Check if request is from an allowed origin
-    if ALLOWED_ORIGINS:
-        origin = request.headers.get("origin") or request.headers.get("referer", "")
-        if origin:
-            # Normalize origin
-            origin_normalized = origin.rstrip("/").split("?")[0]
-            
-            # For referer, extract just origin part (scheme + host + port)
-            if "referer" in request.headers and not "origin" in request.headers:
-                from urllib.parse import urlparse
-                parsed = urlparse(origin_normalized)
-                origin_normalized = f"{parsed.scheme}://{parsed.netloc}"
-            
-            # Check against allowed origins
-            for allowed in ALLOWED_ORIGINS:
-                allowed_normalized = allowed.rstrip("/")
-                if origin_normalized == allowed_normalized or origin_normalized.startswith(allowed_normalized + "/"):
-                    return  # Allow without API key
-    
-    # Require API key for all other requests
-    api_key = request.headers.get("x-api-key")
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Missing API key.")
-    # ... rest of API key validation
-```
+## Rate limits
 
-**Security:** 
-- Only exact origin matches are allowed
-- The `startswith(allowed + "/")` only matches paths on the same origin (browser Origin header doesn't include paths)
-- Referer parsing extracts only scheme + host + port, preventing path-based attacks
+Each request to chat or review counts against the client's limit, per IP address, separately for chat and review. Exceeding it returns `429` with `Retry-After`. Limits are kept in memory per instance.
 
-## How It Protects Against Browser Exposure
+Behind a proxy the IP is the proxy's unless `FORWARDED_IP_DEPTH` is set. It reads `X-Forwarded-For` from the right, because entries on the left can be supplied by the caller.
 
-### The Problem (Before)
-```javascript
-// Frontend code
-fetch('https://api.example.com/ai/review', {
-  method: 'POST',
-  headers: {
-    'X-API-Key': 'secret-key-123'  // ❌ Visible in browser DevTools!
-  },
-  body: formData
-})
-```
+## Agent tools
 
-Attackers could:
-1. Open browser DevTools → Network tab
-2. See the `X-API-Key` header in clear text
-3. Copy and abuse the API key from anywhere
-
-### The Solution (After)
-```javascript
-// Frontend code
-fetch('https://api.example.com/ai/review', {
-  method: 'POST',
-  body: formData  // ✅ No API key in headers!
-})
-// Browser automatically sends Origin header (cannot be modified by JavaScript)
-```
-
-Backend checks:
-1. Is request `Origin` in `ALLOWED_ORIGINS`? → Allow without API key
-2. Not from allowed origin? → Require `X-API-Key` header
-3. Origin header cannot be spoofed by browsers (browser security prevents this)
-
-### Why This Is Secure
-
-1. **Browser Origin header is protected**: JavaScript cannot modify the Origin header due to browser security policies (CORS)
-2. **Non-browser clients (servers) still need API key**: curl, Postman, backend services can spoof Origin, so they must use API key
-3. **Rate limiting still applies**: All requests are rate-limited regardless of authentication method
-4. **Only specific domains allowed**: Must configure exact domains in `ALLOWED_ORIGINS`
-
-## Configuration Examples
-
-### Development (localhost)
-```bash
-export ALLOWED_ORIGINS="http://localhost:3000,http://localhost:5173"
-export API_KEYS="dev-key"
-```
-
-### Production
-```bash
-export ALLOWED_ORIGINS="https://yourdomain.com,https://app.yourdomain.com"
-export API_KEYS="$(openssl rand -base64 32)"
-```
-
-### Cloud Run
-```bash
-gcloud run services update jussi-aibot \
-  --set-env-vars=ALLOWED_ORIGINS="https://yourdomain.com" \
-  --region=europe-north1
-```
+The model chooses only argument values for tools. Hosts, paths and methods come from the agent config, path values are URL-encoded, and arguments not declared in the tool's JSON Schema are dropped. Backend credentials stay in environment variables and are never shown to the model.
 
 ## Testing
 
-### Run Security Tests
 ```bash
-# Unit tests for origin matching logic
-python3 tests/test_origin_security.py
+pytest tests/test_security.py tests/test_origin_security.py -v
 
-# Live integration tests (requires server running)
+# Against a running server
 ./tests/verify_origin_security.sh
-
-# Basic access tests
 ./tests/test_origin_access.sh
 ```
-
-### Expected Results
-All tests should pass with no security vulnerabilities detected.
-
-## Conclusion
-
-✅ **The implementation is secure and only allows specific origins configured in the `ALLOWED_ORIGINS` environment variable.**
-
-- No wildcard matching
-- No pattern matching vulnerabilities  
-- Attack vectors properly blocked
-- API key still required for non-allowed origins
-- Browser security enforced (Origin header cannot be spoofed)

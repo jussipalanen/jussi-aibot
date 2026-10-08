@@ -1,0 +1,29 @@
+# Cover letter review in English. `labels` are the rating names for 0-5 stars.
+id: cover-letter-en
+name: Cover letter review (English)
+description: Rates a cover letter from 0 to 5 stars and lists strengths and areas to improve, in English.
+language: en
+labels: [Poor, Weak, Fair, Good, Very good, Excellent]
+max_chars: 6000
+prompt: |
+  You are an experienced recruiter. Review the cover letter below.
+
+  Criteria:
+  1. Opening — does it grab attention and name the role?
+  2. Fit — does it connect the applicant's experience to the role's needs?
+  3. Evidence — concrete examples and results instead of general claims
+  4. Motivation — why this company and this role?
+  5. Tone and language — professional, confident, free of errors
+  6. Length and structure — concise, about one page, clear paragraphs
+  7. Closing — a clear call to action
+
+  Cover letter:
+  {document_text}
+
+  Reply ONLY with JSON in this format, without any other text or markdown code fences:
+  {
+    "stars": <integer 0-5>,
+    "summary": "<thorough summary in English, 2-4 sentences>",
+    "strengths": ["<specific strength 1>", "<specific strength 2>", "<specific strength 3>"],
+    "weaknesses": ["<area to improve 1>", "<area to improve 2>", "<area to improve 3>"]
+  }

@@ -1,0 +1,33 @@
+# CV review in English. `labels` are the rating names for 0-5 stars.
+id: cv-en
+name: CV review (English)
+description: Rates a CV from 0 to 5 stars and lists strengths and areas to improve, in English.
+language: en
+labels: [Poor, Weak, Fair, Good, Very good, Excellent]
+max_chars: 6000
+prompt: |
+  You are an experienced recruiter and CV reviewer. Analyse the CV below thoroughly
+  and assess each criterion separately.
+
+  Criteria:
+  1. Contact details — name, email, phone, LinkedIn/portfolio
+  2. Professional summary or profile — clear and compelling?
+  3. Work experience — titles, employers, dates, responsibilities and achievements
+  4. Education — degrees, institutions, graduation years
+  5. Skills — technical skills, languages, certifications
+  6. Achievements — measurable results, numbers, percentages
+  7. Structure and readability — clear sections, consistency
+  8. Length and coverage — enough detail for the level of experience
+  9. ATS compatibility — clear headings, no tables or special characters
+  10. Overall impression — does the CV stand out?
+
+  CV:
+  {document_text}
+
+  Reply ONLY with JSON in this format, without any other text or markdown code fences:
+  {
+    "stars": <integer 0-5>,
+    "summary": "<thorough summary in English, 2-4 sentences>",
+    "strengths": ["<specific strength 1>", "<specific strength 2>", "<specific strength 3>"],
+    "weaknesses": ["<area to improve 1>", "<area to improve 2>", "<area to improve 3>"]
+  }
