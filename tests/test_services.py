@@ -2,17 +2,18 @@
 Unit tests for pure service functions (no external I/O required).
 """
 import pytest
-from services import (
-    normalize_whitespace,
-    extract_json_from_text,
-    map_rating_text,
+
+from aibot.llm import ProviderError
+from aibot.llm.puter import extract_puter_text as _extract_puter_text
+from aibot.review.cv_fi import (
     analyze_resume_heuristics,
-    build_review_response,
     beautify_provider_output,
+    build_review_response,
+    extract_json_from_text,
     format_summary_by_rating,
-    _extract_puter_text,
+    map_rating_text,
 )
-from fastapi import HTTPException
+from aibot.review.extract import normalize_whitespace
 
 
 # ── normalize_whitespace ───────────────────────────────────────────────────
@@ -157,11 +158,9 @@ def test_extract_puter_text_choices_format() -> None:
 
 def test_extract_puter_text_error_payload_raises() -> None:
     response = {"success": False, "error": "rate limited"}
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ProviderError, match="rate limited"):
         _extract_puter_text(response)
-    assert exc_info.value.status_code == 502
 
 def test_extract_puter_text_unreadable_raises() -> None:
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ProviderError, match="unreadable"):
         _extract_puter_text({"unknown": "shape"})
-    assert exc_info.value.status_code == 502

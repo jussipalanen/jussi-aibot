@@ -1,8 +1,8 @@
 {
   "info": {
-    "_postman_id": "c61c89ad-7614-46a9-bfc6-7f0029a098cc",
+    "_postman_id": "ef3134c0-8ef6-4bb3-87aa-abcbec63353a",
     "name": "Jussi AI Bot",
-    "description": "A simple AI bot built with FastAPI and PyTorch for Finnish resume analysis.",
+    "description": "\nA configurable AI agent platform: chat agents with tools and RAG, and document reviews, behind one API.\n\n**Authentication:** send `Authorization: Bearer <key>` from servers. Browser\nclients listed in the clients config are identified by their `Origin` instead.\nLocal development without any clients configured needs no authentication.\n\n**Rate limits:** per client, per IP address, for chat and review separately.\nExceeding a limit returns `429` with a `Retry-After` header.\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -19,166 +19,313 @@
   ],
   "item": [
     {
-      "name": "Root",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{AI_SECRET_KEY}}",
-            "type": "text",
-            "disabled": true
-          }
-        ],
-        "url": {
-          "raw": "http://localhost:8080/",
-          "host": [
-            "http://localhost:8080"
-          ],
-          "path": []
+      "name": "Service",
+      "item": [
+        {
+          "name": "Service home",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": []
+            },
+            "description": "A small home page with links to the documentation. Returns JSON when the client asks for it."
+          },
+          "response": []
         },
-        "description": "Root endpoint."
-      },
-      "response": []
-    },
-    {
-      "name": "Robots Txt",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{AI_SECRET_KEY}}",
-            "type": "text",
-            "disabled": true
-          }
-        ],
-        "url": {
-          "raw": "http://localhost:8080/robots.txt",
-          "host": [
-            "http://localhost:8080"
-          ],
-          "path": [
-            "robots.txt"
-          ]
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/health",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Returns `ok` when the service is running. Makes no AI calls."
+          },
+          "response": []
+        },
+        {
+          "name": "Version information",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/version",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "version"
+              ]
+            },
+            "description": "Application, Python and FastAPI versions."
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "Health",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{AI_SECRET_KEY}}",
-            "type": "text",
-            "disabled": true
-          }
-        ],
-        "url": {
-          "raw": "http://localhost:8080/health",
-          "host": [
-            "http://localhost:8080"
-          ],
-          "path": [
-            "health"
-          ]
+      "name": "Agents",
+      "item": [
+        {
+          "name": "List agents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/v1/agents",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "v1",
+                "agents"
+              ]
+            },
+            "description": "Agents this API key or origin may use."
+          },
+          "response": []
         },
-        "description": "Health check endpoint."
-      },
-      "response": []
-    },
-    {
-      "name": "Version",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{AI_SECRET_KEY}}",
-            "type": "text",
-            "disabled": true
-          }
-        ],
-        "url": {
-          "raw": "http://localhost:8080/version",
-          "host": [
-            "http://localhost:8080"
-          ],
-          "path": [
-            "version"
-          ]
-        },
-        "description": "Get version information."
-      },
-      "response": []
-    },
-    {
-      "name": "Chat",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{AI_SECRET_KEY}}",
-            "type": "text",
-            "disabled": true
-          }
-        ],
-        "url": {
-          "raw": "http://localhost:8080/ai/chat",
-          "host": [
-            "http://localhost:8080"
-          ],
-          "path": [
-            "ai",
-            "chat"
-          ]
-        },
-        "description": "Conversational AI agent. Use `handler` to select the chatbot:\n- \"jussispace\" — searches properties and checks orders",
-        "body": {
-          "mode": "raw",
-          "raw": "\"\"",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "Chat with an agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/v1/agents/:agent_id/chat",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "v1",
+                "agents",
+                ":agent_id",
+                "chat"
+              ]
+            },
+            "description": "Send a message (plus earlier messages for multi-turn chat) and get the agent's reply.",
+            "body": {
+              "mode": "raw",
+              "raw": "\"\"",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
-          }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "Ai Review",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{AI_SECRET_KEY}}",
-            "type": "text",
-            "disabled": true
-          }
-        ],
-        "url": {
-          "raw": "http://localhost:8080/ai/review",
-          "host": [
-            "http://localhost:8080"
-          ],
-          "path": [
-            "ai",
-            "review"
-          ]
+      "name": "Review",
+      "item": [
+        {
+          "name": "List review rubrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/v1/review/rubrics",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "v1",
+                "review",
+                "rubrics"
+              ]
+            },
+            "description": "Rubrics this API key or origin may use with `POST /v1/review`."
+          },
+          "response": []
         },
-        "description": "Review a resume file and provide analysis with ratings.\nSupports PDF, DOC, and DOCX formats and provider selection.",
-        "body": {
-          "mode": "formdata",
-          "formdata": []
+        {
+          "name": "Review a document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/v1/review",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "v1",
+                "review"
+              ]
+            },
+            "description": "Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses.",
+            "body": {
+              "mode": "formdata",
+              "formdata": []
+            }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
+    },
+    {
+      "name": "Providers",
+      "item": [
+        {
+          "name": "List AI providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/v1/providers",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "v1",
+                "providers"
+              ]
+            },
+            "description": "Which providers have credentials set. Useful for checking a deployment."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Legacy",
+      "item": [
+        {
+          "name": "Chat with an agent (legacy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/ai/chat",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "ai",
+                "chat"
+              ]
+            },
+            "description": "Same as `POST /v1/agents/{handler}/chat`, with the agent id in the body.",
+            "body": {
+              "mode": "raw",
+              "raw": "\"\"",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Review a Finnish CV (legacy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AI_SECRET_KEY}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8080/ai/review",
+              "host": [
+                "http://localhost:8080"
+              ],
+              "path": [
+                "ai",
+                "review"
+              ]
+            },
+            "description": "Finnish CV review with the original response format. See `POST /v1/review` for other rubrics.",
+            "body": {
+              "mode": "formdata",
+              "formdata": []
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

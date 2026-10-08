@@ -1,215 +1,43 @@
 """
-Service functions for resume text extraction and analysis.
+Legacy Finnish CV review used by `POST /ai/review`: prompts, JSON parsing,
+heuristic fallback and the response format the existing frontends expect.
 """
-from fastapi import HTTPException, status
-from functools import lru_cache
-import io
 import json
-import os
 import re
-import subprocess
-import tempfile
 
-import pdfplumber
-from docx import Document
+from aibot.review.extract import normalize_whitespace
 
-def _local_model_disabled() -> bool:
-    """Return True if the local model is disabled via the DISABLE_LOCAL_MODEL env var."""
-    value = os.getenv("DISABLE_LOCAL_MODEL", "").strip().lower()
-    return value in {"1", "true", "yes", "on"}
+# Completion-style prompt for the local and Puter providers.
+REVIEW_PROMPT_TEMPLATE = (
+    "Ansioluettelo:\n{resume_text}\n\n"
+    "Arvostelu: Tämä on"
+)
 
-
-@lru_cache(maxsize=1)
-def _get_local_model():
-    """Load and cache the local Finnish language model. Raises 503 if disabled."""
-    if _local_model_disabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Local model is disabled. Use provider=puter_ai instead."
-        )
-
-    # Lazy import to avoid Hugging Face download at startup
-    from model import model, tokenizer, device
-    return model, tokenizer, device
-
-
-def detect_language(text: str) -> str:
-    """
-    Language detection - currently only Finnish is supported.
-    Returns 'fi' for Finnish.
-    """
-    # Only Finnish language is supported
-    return "fi"
-
-
-def generate_review_default(prompt: str) -> str:
-    """Generate review text with the local Finnish model."""
-    model, tokenizer, device = _get_local_model()
-    encoded = tokenizer(prompt, return_tensors="pt").to(device)
-    input_ids = encoded.input_ids
-
-    outputs = model.generate(
-        input_ids,
-        max_new_tokens=300,
-        temperature=0.8,
-        top_p=0.92,
-        do_sample=True,
-        repetition_penalty=1.1,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id
-    )
-
-    generated_ids = outputs[0]
-    new_tokens = generated_ids[input_ids.shape[-1]:]
-    if new_tokens.numel() == 0:
-        new_tokens = generated_ids
-
-    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-
-
-def _extract_puter_text(response: object) -> str:
-    """Extract text from Puter response shape safely."""
-    if isinstance(response, str):
-        return response.strip()
-
-    if isinstance(response, dict):
-        # Puter SDK common shape:
-        # {"success": true, "result": {"message": {"content": "..."}}}
-        result = response.get("result")
-        if isinstance(result, dict):
-            message = result.get("message")
-            if isinstance(message, dict):
-                content = message.get("content")
-                if isinstance(content, str):
-                    return content.strip()
-
-        # Surface explicit provider error payloads when present.
-        if response.get("success") is False:
-            error_msg = response.get("error") or response.get("message")
-            if isinstance(error_msg, str) and error_msg.strip():
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Puter AI request failed: {error_msg.strip()}"
-                )
-
-        choices = response.get("choices")
-        if isinstance(choices, list) and choices:
-            first = choices[0]
-            if isinstance(first, dict):
-                message = first.get("message")
-                if isinstance(message, dict):
-                    content = message.get("content")
-                    if isinstance(content, str):
-                        return content.strip()
-                text = first.get("text")
-                if isinstance(text, str):
-                    return text.strip()
-
-        message = response.get("message")
-        if isinstance(message, dict):
-            content = message.get("content")
-            if isinstance(content, str):
-                return content.strip()
-        content = response.get("content")
-        if isinstance(content, str):
-            return content.strip()
-
-    choices = getattr(response, "choices", None)
-    if isinstance(choices, list) and choices:
-        first = choices[0]
-        message = getattr(first, "message", None)
-        if message is not None:
-            content = getattr(message, "content", None)
-            if isinstance(content, str):
-                return content.strip()
-        text = getattr(first, "text", None)
-        if isinstance(text, str):
-            return text.strip()
-
-    content = getattr(response, "content", None)
-    if isinstance(content, str):
-        return content.strip()
-
-    # Debug: log the response structure
-    import json
-    try:
-        response_debug = json.dumps(response, default=str, indent=2)
-    except:
-        response_debug = str(response)
-    
-    raise HTTPException(
-        status_code=status.HTTP_502_BAD_GATEWAY,
-        detail=f"Puter AI returned an unreadable response. Response structure: {response_debug[:500]}"
-    )
-
-
-def generate_review_puter_ai(prompt: str) -> str:
-    """Generate review text with Puter AI SDK."""
-    api_key = os.getenv("PUTER_API_KEY", "").strip()
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Puter AI is not configured. Missing PUTER_API_KEY."
-        )
-
-    model_name = os.getenv("PUTER_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
-    driver = os.getenv("PUTER_DRIVER", "openai-completion").strip() or "openai-completion"
-
-    try:
-        from puter import ChatCompletion
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Puter AI SDK is not installed."
-        ) from exc
-
-    try:
-        response = ChatCompletion.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model_name,
-            driver=driver,
-            api_key=api_key
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Puter AI request failed: {exc}"
-        ) from exc
-
-    return _extract_puter_text(response)
-
-
-def generate_review_vertex_ai(prompt: str) -> str:
-    """Generate review text with Google Vertex AI (Gemini)."""
-    try:
-        import vertexai
-        from vertexai.generative_models import GenerativeModel
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vertex AI SDK is not installed. Run: pip install google-cloud-aiplatform"
-        ) from exc
-
-    project = os.getenv("GCP_PROJECT", "").strip()
-    location = os.getenv("GCP_LOCATION", "europe-north1").strip() or "europe-north1"
-    model_name = os.getenv("VERTEX_MODEL", "gemini-2.5-flash-lite").strip() or "gemini-2.5-flash-lite"
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vertex AI is not configured. Missing GCP_PROJECT."
-        )
-
-    try:
-        vertexai.init(project=project, location=location)
-        model = GenerativeModel(model_name)
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Vertex AI request failed: {exc}"
-        ) from exc
+# Structured prompt for Gemini — deep analysis with explicit criteria.
+VERTEX_REVIEW_PROMPT_TEMPLATE = (
+    "Olet kokenut rekrytoija ja ansioluettelon arvioija. Analysoi seuraava ansioluettelo perusteellisesti "
+    "ja arvioi jokainen alla oleva kriteeri erikseen.\n\n"
+    "Arviointikriteerit:\n"
+    "1. Yhteystiedot — nimi, sähköposti, puhelin, LinkedIn/portfolio\n"
+    "2. Ammatillinen tiivistelmä tai profiili — onko selkeä ja houkutteleva\n"
+    "3. Työkokemus — työnimikkeet, työnantajat, päivämäärät, vastuut ja saavutukset\n"
+    "4. Koulutus — tutkinnot, oppilaitokset, valmistumisvuodet\n"
+    "5. Taidot ja osaaminen — tekniset taidot, kielet, sertifikaatit\n"
+    "6. Saavutukset — mitattavat tulokset, luvut, prosentit\n"
+    "7. Rakenne ja luettavuus — selkeä jäsentely, johdonmukaisuus\n"
+    "8. Pituus ja kattavuus — riittävä yksityiskohtaisuus suhteessa kokemukseen\n"
+    "9. ATS-yhteensopivuus — selkeät otsikot, ei taulukoita tai erikoismerkkejä\n"
+    "10. Kokonaisvaikutelma — erottuuko CV edukseen\n\n"
+    "Ansioluettelo:\n{resume_text}\n\n"
+    "Palauta vastauksesi AINOASTAAN seuraavassa JSON-muodossa ilman muuta tekstiä tai markdown-koodimerkkejä:\n"
+    '{{\n'
+    '  "stars": <kokonaisluku 0-5>,\n'
+    '  "rating_text": "<Erinomainen|Erittäin hyvä|Hyvä|Tyydyttävä|Heikko|Huono>",\n'
+    '  "summary": "<kattava yhteenveto suomeksi, 2-4 lausetta>",\n'
+    '  "strengths": ["<konkreettinen vahvuus 1>", "<konkreettinen vahvuus 2>", "<konkreettinen vahvuus 3>"],\n'
+    '  "weaknesses": ["<kehityskohde 1>", "<kehityskohde 2>", "<kehityskohde 3>"]\n'
+    '}}'
+)
 
 
 def map_rating_text(stars: int) -> str:
@@ -236,11 +64,6 @@ def extract_json_from_text(text: str) -> dict | None:
         return json.loads(match.group(0))
     except json.JSONDecodeError:
         return None
-
-
-def normalize_whitespace(text: str) -> str:
-    """Normalize whitespace for stable prompts and cache keys."""
-    return re.sub(r"\s+", " ", text).strip()
 
 
 def beautify_provider_output(text: str) -> str:
@@ -305,64 +128,6 @@ def _format_default_provider_output(
         f"Kokonaisarvosana: {rating_text} ({stars}/5). "
         f"Vahvuudet: {strengths_text}. "
         f"Kehityskohteet: {weaknesses_text}."
-    )
-
-
-def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract text from each PDF page."""
-    text_parts = []
-    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text() or ""
-            if page_text:
-                text_parts.append(page_text)
-    return "\n".join(text_parts)
-
-
-def extract_text_from_docx(file_bytes: bytes) -> str:
-    """Extract paragraph text from DOCX files."""
-    doc = Document(io.BytesIO(file_bytes))
-    paragraphs = [p.text for p in doc.paragraphs if p.text]
-    return "\n".join(paragraphs)
-
-
-def extract_text_from_doc(file_bytes: bytes) -> str:
-    """Use antiword for legacy DOC files."""
-    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_file:  # nosec B108 - delete=False required so antiword can read the file by path
-        tmp_file.write(file_bytes)
-        tmp_path = tmp_file.name
-    try:
-        result = subprocess.run(  # nosec B603 B607 - fixed command list, no shell, no user-controlled input in args
-            ["antiword", tmp_path],
-            capture_output=True,
-            text=True,
-            check=False
-        )
-        if result.returncode != 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to extract text from DOC file."
-            )
-        return result.stdout
-    finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-
-
-def extract_resume_text(file_bytes: bytes, filename: str) -> str:
-    """Route extraction by file extension."""
-    _, ext = os.path.splitext(filename.lower())
-    if ext == ".pdf":
-        return extract_text_from_pdf(file_bytes)
-    if ext == ".docx":
-        return extract_text_from_docx(file_bytes)
-    if ext in {".doc", ".docs"}:
-        return extract_text_from_doc(file_bytes)
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Unsupported file type."
     )
 
 

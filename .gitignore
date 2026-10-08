@@ -13,3 +13,6 @@ venv/
 # Local environment files
 .env
 secrets/
+
+# Client keys and origins (use config/clients.example.yaml as a template)
+config/clients.yaml

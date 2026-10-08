@@ -1,0 +1,35 @@
+# CV review in Finnish. `labels` are the rating names for 0-5 stars.
+id: cv-fi
+name: CV review (Finnish)
+description: Rates a CV from 0 to 5 stars and lists strengths and areas to improve, in Finnish.
+language: fi
+labels: [Huono, Heikko, Tyydyttävä, Hyvä, Erittäin hyvä, Erinomainen]
+max_chars: ${VERTEX_PROMPT_MAX_CHARS:-6000}
+# When the model does not return JSON, fall back to keyword-based scoring.
+heuristics: cv_fi
+prompt: |
+  Olet kokenut rekrytoija ja ansioluettelon arvioija. Analysoi seuraava ansioluettelo perusteellisesti
+  ja arvioi jokainen alla oleva kriteeri erikseen.
+
+  Arviointikriteerit:
+  1. Yhteystiedot — nimi, sähköposti, puhelin, LinkedIn/portfolio
+  2. Ammatillinen tiivistelmä tai profiili — onko selkeä ja houkutteleva
+  3. Työkokemus — työnimikkeet, työnantajat, päivämäärät, vastuut ja saavutukset
+  4. Koulutus — tutkinnot, oppilaitokset, valmistumisvuodet
+  5. Taidot ja osaaminen — tekniset taidot, kielet, sertifikaatit
+  6. Saavutukset — mitattavat tulokset, luvut, prosentit
+  7. Rakenne ja luettavuus — selkeä jäsentely, johdonmukaisuus
+  8. Pituus ja kattavuus — riittävä yksityiskohtaisuus suhteessa kokemukseen
+  9. ATS-yhteensopivuus — selkeät otsikot, ei taulukoita tai erikoismerkkejä
+  10. Kokonaisvaikutelma — erottuuko CV edukseen
+
+  Ansioluettelo:
+  {document_text}
+
+  Palauta vastauksesi AINOASTAAN seuraavassa JSON-muodossa ilman muuta tekstiä tai markdown-koodimerkkejä:
+  {
+    "stars": <kokonaisluku 0-5>,
+    "summary": "<kattava yhteenveto suomeksi, 2-4 lausetta>",
+    "strengths": ["<konkreettinen vahvuus 1>", "<konkreettinen vahvuus 2>", "<konkreettinen vahvuus 3>"],
+    "weaknesses": ["<kehityskohde 1>", "<kehityskohde 2>", "<kehityskohde 3>"]
+  }

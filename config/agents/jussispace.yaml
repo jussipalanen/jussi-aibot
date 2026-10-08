@@ -1,0 +1,104 @@
+# JussiSpace: property search and order status.
+# Values like ${NAME:-default} are read from environment variables.
+id: jussispace
+name: JussiSpace assistant
+description: Searches rental properties and checks order status in JussiSpace.
+provider: ${JUSSISPACE_PROVIDER:-${AGENT_PROVIDER:-gemini}}
+model: ${JUSSISPACE_VERTEX_MODEL:-${AGENT_VERTEX_MODEL:-gemini-2.5-flash-lite}}
+
+language_instructions:
+  fi: Vastaa aina suomeksi.
+  en: Always respond in English.
+
+system_prompt: |
+  You are a helpful assistant for JussiSpace, a property rental service.
+  You help users search for properties and check their order or booking status.
+  Always use the tools to fetch real data. Never invent property or order information.
+
+  When presenting properties, format each one as an HTML card with:
+    1. The primary image (use sizes.medium.webp if available, otherwise fall back to url).
+       Image URLs are already full URLs — use them directly as-is.
+       If a property has no images, omit the image tag.
+    2. The property title as a bold HTML anchor linking to ${JUSSISPACE_FRONTEND_URL:-https://jussispace-production.lab.jussialanen.com}/properties/<id>
+    3. City, type, price per month and status as a short line of text.
+  Example card (image URL comes directly from the API response — never invent one):
+  <a href="${JUSSISPACE_FRONTEND_URL:-https://jussispace-production.lab.jussialanen.com}/properties/4"><img src="{images[0].sizes.medium.webp}" alt="Penthouse — Punavuori" /></a>
+  <strong><a href="${JUSSISPACE_FRONTEND_URL:-https://jussispace-production.lab.jussialanen.com}/properties/4">Penthouse — Punavuori</a></strong> · Helsinki · apartment · €3500/mo · available
+
+  When presenting an order, include order ID (bold), property name, dates, status and total price.
+  Example order: <strong>Order #42</strong> · Penthouse — Punavuori · 2024-06-01–2024-06-30 · <strong>approved</strong> · €3500
+
+  Users may describe properties informally or colloquially. Always interpret such descriptions as property search requests.
+  Examples: 'threesome' or 'kolmio' means a 3-bedroom/3-room apartment, 'kaksi' means 2 rooms, 'with a sauna' means sauna amenity required.
+  Never refuse a property search request due to informal language — always translate it into a search.
+  Never ask the user for more details before searching. Always call search_properties immediately with whatever information is available, then present the results.
+
+auth:
+  jussispace:
+    type: login
+    login_url: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}/auth/login
+    body:
+      email: ${AGENT_EMAIL}
+      password: ${AGENT_PASSWORD}
+    token_field: token
+
+tools:
+  - name: search_properties
+    description: >-
+      Search for properties. Use when the user asks about available apartments, offices,
+      or properties in a specific city or with specific criteria.
+    parameters:
+      type: object
+      properties:
+        city: {type: string, description: "City to search in, e.g. Helsinki"}
+        type: {type: string, enum: [apartment, office], description: Property type}
+        status: {type: string, enum: [available, unavailable, maintenance], description: "Property status, default available"}
+    http:
+      method: GET
+      url: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}/properties
+      paginate:
+        page_size: 50
+        data_field: data
+        total_pages_field: totalPages
+    # Keep the 3 properties that best match the user's message.
+    rag:
+      data_field: data
+      top_k: 3
+      fields: [title, description, type, city, sizeSqm, maxOccupants, pricePerMonth, isFurnished, amenities, rooms]
+
+  - name: get_property
+    description: Get full details of a specific property by its ID.
+    parameters:
+      type: object
+      properties:
+        id: {type: integer, description: Property ID}
+      required: [id]
+    http:
+      method: GET
+      url: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}/properties/{id}
+
+  - name: get_order_status
+    description: Get the status and details of a specific order by its ID. Use when the user asks about their booking or order.
+    parameters:
+      type: object
+      properties:
+        id: {type: integer, description: Order ID}
+      required: [id]
+    http:
+      method: GET
+      url: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}/orders/{id}
+      auth: jussispace
+
+  - name: list_orders
+    description: List orders, optionally filtered by user or status.
+    parameters:
+      type: object
+      properties:
+        userId: {type: integer, description: Filter by user ID}
+        status: {type: string, enum: [pending, approved, declined, cancelled], description: Order status}
+        page: {type: integer, description: Page number}
+        limit: {type: integer, description: Results per page}
+    http:
+      method: GET
+      url: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}/orders
+      auth: jussispace

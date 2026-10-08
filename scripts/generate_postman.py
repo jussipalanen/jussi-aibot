@@ -8,10 +8,11 @@ Usage:
 import argparse
 import json
 import os
+import re
 import sys
 import uuid
 
-# Must set env vars before importing the app (routes.py reads them at module load)
+# Safe defaults so the app can be built without credentials
 os.environ.setdefault("DEFAULT_PROVIDER", "puter_ai")
 os.environ.setdefault("DISABLE_LOCAL_MODEL", "true")
 
@@ -26,7 +27,8 @@ def _build_item(path: str, method: str, operation: dict, base_url: str) -> dict:
     description = operation.get("description", "")
 
     # Build URL
-    clean_path = path.lstrip("/")
+    # Postman writes path variables as :name instead of {name}
+    clean_path = re.sub(r"\{(\w+)\}", r":\1", path.lstrip("/"))
     url = {
         "raw": f"{base_url}/{clean_path}",
         "host": [base_url],
