@@ -21,6 +21,8 @@ from aibot.settings import Settings
 
 T = TypeVar("T")
 
+MAX_TEXT_CHARS = 100_000
+
 
 @dataclass
 class Services:
@@ -84,7 +86,7 @@ async def read_document(file: UploadFile, max_bytes: int) -> str:
     file_bytes = await file.read(max_bytes + 1)
     if len(file_bytes) > max_bytes:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"File too large. Max size is {max_bytes // (1024 * 1024)}MB.",
         )
 
@@ -100,3 +102,13 @@ async def read_document(file: UploadFile, max_bytes: int) -> str:
             detail="No text could be extracted from the uploaded file.",
         )
     return text
+
+
+def read_text(text: str) -> str:
+    """Validate pasted document text and return it normalized."""
+    if len(text) > MAX_TEXT_CHARS:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"Text too long. Max length is {MAX_TEXT_CHARS} characters.",
+        )
+    return normalize_whitespace(text)

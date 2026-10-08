@@ -24,12 +24,14 @@ Clients come from `config/clients.yaml` (or `CLIENTS_FILE`). Without that file, 
 | No key, `Origin` belongs to a client with a key | ❌ `401` — the key is required |
 | No key and no known origin | ❌ `401` (no `Origin`) or `403` (unknown `Origin`) |
 | Invalid key or malformed `Authorization` header | ❌ `401` |
+| No key, `Origin` is this service itself and `DEMO_PUBLIC=true` | ✅ The demo client: reviews only, no agents, `DEMO_RATE_LIMIT` |
 
 Details:
 
 - Keys are compared as SHA-256 hashes with `hmac.compare_digest`, so the config can hold hashes instead of keys.
 - Origins must match exactly after removing a trailing slash: scheme, host and port. Prefixes (`https://app.test.evil.test`), other ports and other schemes are rejected.
 - A client can only use the agents and rubrics it lists; others answer `404`, as if they did not exist.
+- "This service itself" means the `Origin` host equals the request's `Host` header. A valid key is accepted from there even if the client's origin list doesn't include it, so the review demo works with any key.
 
 ## What origins do and don't protect
 

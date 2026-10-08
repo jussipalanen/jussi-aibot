@@ -54,3 +54,11 @@ services:
         value: 50/day
       - key: FORWARDED_IP_DEPTH
         value: "0"
+
+      # ── Review demo (/demo/review) ──────────────────────────────────────
+      # Visitors can review without a key, up to DEMO_RATE_LIMIT. Set to
+      # "false" to require an API key on the demo page.
+      - key: DEMO_PUBLIC
+        value: "true"
+      - key: DEMO_RATE_LIMIT
+        value: 20/day
