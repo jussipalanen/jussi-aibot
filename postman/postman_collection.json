@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "ef3134c0-8ef6-4bb3-87aa-abcbec63353a",
+    "_postman_id": "df952b45-f674-46f9-af56-67f54ba253b4",
     "name": "Jussi AI Bot",
     "description": "\nA configurable AI agent platform: chat agents with tools and RAG, and document reviews, behind one API.\n\n**Authentication:** send `Authorization: Bearer <key>` from servers. Browser\nclients listed in the clients config are identified by their `Origin` instead.\nLocal development without any clients configured needs no authentication.\n\n**Rate limits:** per client, per IP address, for chat and review separately.\nExceeding a limit returns `429` with a `Retry-After` header.\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -40,7 +40,7 @@
               ],
               "path": []
             },
-            "description": "A small home page with links to the documentation. Returns JSON when the client asks for it."
+            "description": "A small home page with links to the demos and documentation. Returns JSON when the client asks for it."
           },
           "response": []
         },
@@ -216,7 +216,7 @@
                 "review"
               ]
             },
-            "description": "Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses.",
+            "description": "Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses.\n\nUpload a file **or** send the text in the `text` field.",
             "body": {
               "mode": "formdata",
               "formdata": []

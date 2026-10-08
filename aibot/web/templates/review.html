@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>CV &amp; application review · {{name}}</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo small" href="/" aria-label="{{name}}">
+    <span class="mark" aria-hidden="true">AI</span>
+    <span class="wordmark">{{name}}</span>
+  </a>
+  <nav>
+    <a href="/docs" data-i18n="navDocs">API docs</a>
+    <div class="lang-switch" role="group" aria-label="Language / Kieli">
+      <button type="button" data-lang="fi" lang="fi" aria-pressed="false">Suomi</button>
+      <button type="button" data-lang="en" lang="en" aria-pressed="true">English</button>
+    </div>
+  </nav>
+</header>
+
+<main class="container">
+  <h1 data-i18n="title">CV &amp; application review</h1>
+  <p class="lead" data-i18n="lead">Upload a CV or job application, or paste its text. The AI rates it from 0 to 5 stars and lists its strengths and what to improve.</p>
+
+  <form id="review-form" class="card" novalidate>
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" id="tab-file" aria-selected="true" aria-controls="panel-file" data-i18n="tabFile">Upload file</button>
+      <button type="button" class="tab" role="tab" id="tab-text" aria-selected="false" aria-controls="panel-text" tabindex="-1" data-i18n="tabText">Paste text</button>
+    </div>
+
+    <div id="panel-file" role="tabpanel" aria-labelledby="tab-file">
+      <label class="dropzone" id="dropzone" for="file-input">
+        <input type="file" id="file-input" accept=".pdf,.doc,.docx" class="visually-hidden">
+        <svg class="icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+        </svg>
+        <span class="title" data-i18n="dropTitle">Drag and drop a file here</span>
+        <span class="hint"><span data-i18n="dropOr">or</span> <u data-i18n="dropChoose">choose a file</u> · <span data-i18n="dropTypes">PDF, DOC or DOCX, up to {mb} MB</span></span>
+      </label>
+      <div class="file-chip" id="file-chip" hidden>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
+        </svg>
+        <span class="name" id="file-name"></span>
+        <span class="size" id="file-size"></span>
+        <button type="button" id="file-clear" data-i18n-aria-label="removeFile" aria-label="Remove file">&times;</button>
+      </div>
+    </div>
+
+    <div id="panel-text" role="tabpanel" aria-labelledby="tab-text" hidden>
+      <label class="field-label" for="text-input" data-i18n="textLabel">Document text</label>
+      <textarea id="text-input" maxlength="{{max_chars}}" data-i18n-placeholder="textPlaceholder" placeholder="Paste the CV or application text here…"></textarea>
+      <p class="hint counter" id="char-count"></p>
+    </div>
+
+    <div class="field">
+      <label for="kind" data-i18n="kindLabel">Document type</label>
+      <select id="kind"></select>
+      <p class="hint" id="review-language"></p>
+    </div>
+
+    <details class="advanced" id="advanced">
+      <summary data-i18n="apiKey">API key</summary>
+      <label class="visually-hidden" for="api-key" data-i18n="apiKey">API key</label>
+      <input type="password" id="api-key" autocomplete="off" spellcheck="false" data-i18n-placeholder="apiKeyPlaceholder" placeholder="Only needed if this service requires a key">
+      <p class="hint" data-i18n="apiKeyHint">Sent only to this service and kept only in this browser tab.</p>
+    </details>
+
+    <p class="error" id="form-error" role="alert" hidden></p>
+
+    <div class="submit">
+      <button type="submit" class="button primary block" id="submit-button" data-i18n="submit">Review</button>
+      <p class="hint" id="submit-hint" data-i18n="reviewingHint" hidden>Reviewing… this usually takes 5–30 seconds.</p>
+      <p class="hint privacy" data-i18n="privacy">The document is sent to an AI service for the review and is not stored here. Avoid uploading sensitive personal data you don't want to share.</p>
+    </div>
+  </form>
+
+  <section class="card result" id="result" hidden aria-live="polite" tabindex="-1">
+    <div class="result-head">
+      <div class="stars" id="stars" role="img"></div>
+      <div>
+        <div class="rating" id="rating"></div>
+        <div class="meta" id="result-meta"></div>
+      </div>
+    </div>
+    <h2 data-i18n="summary">Summary</h2>
+    <p id="summary"></p>
+    <div class="columns">
+      <div>
+        <h2 class="good" data-i18n="strengths">Strengths</h2>
+        <ul id="strengths"></ul>
+      </div>
+      <div>
+        <h2 class="bad" data-i18n="weaknesses">To improve</h2>
+        <ul id="weaknesses"></ul>
+      </div>
+    </div>
+    <button type="button" class="button" id="again" data-i18n="again">Review another</button>
+  </section>
+</main>
+
+<script id="review-config" type="application/json">{{config}}</script>
+<script src="/static/review.js" defer></script>
+</body>
+</html>

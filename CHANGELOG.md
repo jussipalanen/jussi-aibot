@@ -22,6 +22,11 @@ The service is now a configurable platform: agents, tools, RAG and review rubric
 - Home page at `/` with links to `/docs`, `/redoc` and `/openapi.json`; JSON when requested with `Accept: application/json`
 - Bearer auth in the OpenAPI schema, so `/docs` has an **Authorize** button
 - Render Blueprint (`render.yaml`) and Render setup instructions
+- CV & application review demo at `/demo/review`, linked from the home page: drag-and-drop upload or pasted text, CV or job application, results with stars, summary, strengths and areas to improve
+- Finnish and English for the demo page and the reviews, with a Suomi / English switch
+- `cover-letter-fi` rubric for Finnish job applications
+- `POST /v1/review` accepts plain text in `text` instead of a file
+- `DEMO_ENABLED`, `DEMO_PUBLIC` and `DEMO_RATE_LIMIT` settings; requests from the service's own pages are never rejected for their origin
 
 ### Changed
 

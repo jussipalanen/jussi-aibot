@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Request
 from pydantic import BaseModel, Field
 
 from aibot.agents.engine import ChatTurn
-from aibot.api.deps import call_ai, read_document, require_client, services
+from aibot.api.deps import call_ai, read_document, read_text, require_client, services
 from aibot.review.rubrics import review_document
 from aibot.security import Client
 
@@ -122,14 +122,24 @@ async def list_rubrics(
 @router.post("/review", tags=["Review"], summary="Review a document")
 async def review(
     request: Request,
-    file: Annotated[UploadFile, File(description="PDF, DOC or DOCX")],
     client: Annotated[Client, Depends(require_client("review"))],
+    file: Annotated[UploadFile | None, File(description="PDF, DOC or DOCX. Send this or `text`.")] = None,
+    text: Annotated[str | None, Form(description="The document as plain text. Send this or `file`.")] = None,
     rubric: Annotated[str, Form(description="Rubric id from `GET /v1/review/rubrics`")] = "cv-fi",
     provider: Annotated[str | None, Form(description="Provider name; defaults to REVIEW_PROVIDER")] = None,
     model: Annotated[str | None, Form(description="Model name; defaults to the provider's default")] = None,
 ) -> ReviewResult:
-    """Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses."""
+    """Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses.
+
+    Upload a file **or** send the text in the `text` field.
+    """
     svc = services(request)
+    has_file = file is not None and bool(file.filename)
+    has_text = bool((text or "").strip())
+    if has_file and has_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Send either a file or text, not both.")
+    if not has_file and not has_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Send a file or text to review.")
     selected = svc.rubrics.get(rubric)
     if selected is None or not client.can_use_rubric(rubric):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Rubric '{rubric}' not found.")
@@ -140,9 +150,12 @@ async def review(
             detail=f"Unknown provider '{provider_name}'. Use one of: {', '.join(svc.providers.names())}.",
         )
 
-    text = await read_document(file, svc.settings.max_upload_bytes)
+    if has_file:
+        document = await read_document(file, svc.settings.max_upload_bytes)
+    else:
+        document = read_text(text or "")
     llm = svc.providers.get(provider_name)
-    result = await call_ai(lambda: review_document(selected, text, llm, model=(model or "").strip() or None))
+    result = await call_ai(lambda: review_document(selected, document, llm, model=(model or "").strip() or None))
     return ReviewResult(**result)
 
 

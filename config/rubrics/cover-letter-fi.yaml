@@ -1,0 +1,29 @@
+# Job application (cover letter) review in Finnish. `labels` are the rating names for 0-5 stars.
+id: cover-letter-fi
+name: Application review (Finnish)
+description: Rates a job application from 0 to 5 stars and lists strengths and areas to improve, in Finnish.
+language: fi
+labels: [Huono, Heikko, Tyydyttävä, Hyvä, Erittäin hyvä, Erinomainen]
+max_chars: 6000
+prompt: |
+  Olet kokenut rekrytoija. Arvioi alla oleva työhakemus.
+
+  Arviointikriteerit:
+  1. Aloitus — herättääkö se kiinnostuksen ja kertooko, mihin tehtävään haetaan?
+  2. Sopivuus — yhdistääkö hakija kokemuksensa tehtävän tarpeisiin?
+  3. Näytöt — konkreettisia esimerkkejä ja tuloksia yleisten väitteiden sijaan
+  4. Motivaatio — miksi juuri tämä yritys ja tehtävä?
+  5. Sävy ja kieli — ammattimainen, itsevarma ja virheetön
+  6. Pituus ja rakenne — tiivis, noin sivun mittainen, selkeät kappaleet
+  7. Lopetus — selkeä yhteydenottopyyntö
+
+  Työhakemus:
+  {document_text}
+
+  Palauta vastauksesi AINOASTAAN seuraavassa JSON-muodossa ilman muuta tekstiä tai markdown-koodimerkkejä:
+  {
+    "stars": <kokonaisluku 0-5>,
+    "summary": "<kattava yhteenveto suomeksi, 2-4 lausetta>",
+    "strengths": ["<konkreettinen vahvuus 1>", "<konkreettinen vahvuus 2>", "<konkreettinen vahvuus 3>"],
+    "weaknesses": ["<kehityskohde 1>", "<kehityskohde 2>", "<kehityskohde 3>"]
+  }
