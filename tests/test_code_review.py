@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from aibot.review.extract import is_code_file, normalize_code
 from aibot.review.languages import LANGUAGE_RULES, detect_language
-from aibot.review.rubrics import _suggestions, code_languages, number_lines
+from aibot.review.rubrics import _production, _security, _suggestions, code_languages, number_lines
 from tests.conftest import FakeProvider
 
 PY_CODE = "def total(items):\n    result = 0\n    for item in items:\n        result += item\n    return result\n"
@@ -20,6 +20,8 @@ REVIEW = {
     "summary": "Python code that sums a list.",
     "strengths": ["Short"],
     "weaknesses": ["app.py line 2: reimplements sum()"],
+    "production": {"verdict": "needs_work", "reason": "Works, but reimplements a built-in."},
+    "security": {"risk": "none", "issues": []},
     "suggestions": [{
         "file": "app.py",
         "line": 2,
@@ -114,6 +116,31 @@ def test_code_languages_per_file() -> None:
     assert code_languages(SAMPLES["Go"]) == ["Go"]
 
 
+def test_security_risk_is_at_least_the_worst_issue() -> None:
+    report = _security({"risk": "low", "issues": [
+        {"severity": "medium", "title": "Weak hash", "cwe": "cwe-328", "line": "7"},
+        {"severity": "critical", "title": "SQL injection", "detail": "Use parameters.", "file": "db.py", "cwe": "CWE-89"},
+        {"severity": "unknown", "title": "Dropped"},
+        {"severity": "high"},
+        "not an object",
+    ]})
+    assert report["risk"] == "critical"
+    assert [issue["title"] for issue in report["issues"]] == ["SQL injection", "Weak hash"]  # most severe first
+    assert report["issues"][1]["cwe"] == "CWE-328" and report["issues"][1]["line"] == 7
+    assert _security({"risk": "bogus"}) == {"risk": "none", "issues": []}
+    assert _security(None) == {"risk": "none", "issues": []}
+    assert _security({"issues": [{"severity": "low", "title": "x", "cwe": "89; DROP"}]})["issues"][0]["cwe"] is None
+
+
+def test_high_security_risk_is_never_ready_for_production() -> None:
+    high = {"risk": "high", "issues": []}
+    assert _production({"verdict": "ready", "reason": "Looks fine"}, high) == {"verdict": "not_ready", "reason": "Looks fine"}
+    assert _production({"verdict": "needs_work"}, high)["verdict"] == "not_ready"
+    assert _production({"verdict": "ready"}, {"risk": "low", "issues": []})["verdict"] == "ready"
+    assert _production({"verdict": "maybe"}, high) is None
+    assert _production(None, high) is None
+
+
 def test_suggestions_are_cleaned() -> None:
     result = _suggestions([
         REVIEW["suggestions"][0],
@@ -142,6 +169,8 @@ def test_review_pasted_code_keeps_formatting(make_app: Callable[..., FastAPI]) -
     body = response.json()
     assert body["stars"] == 3
     assert body["languages"] == ["Python"]
+    assert body["production"] == {"verdict": "needs_work", "reason": "Works, but reimplements a built-in."}
+    assert body["security"] == {"risk": "none", "issues": []}
     assert body["suggestions"] == [{
         "file": "app.py",
         "line": 2,
@@ -168,6 +197,18 @@ def test_review_several_code_files(make_app: Callable[..., FastAPI]) -> None:
     # Numbers are padded to the widest one across all files.
     assert "==> app.py <==\n 1 | def total(items):" in prompt
     assert "==> greet.js <==\n 1 | export function greet(name) {" in prompt
+
+
+def test_review_reports_security_issues(make_app: Callable[..., FastAPI]) -> None:
+    review = {**REVIEW, "production": {"verdict": "ready", "reason": "Fine"}, "security": {"risk": "low", "issues": [
+        {"severity": "high", "title": "Command injection", "detail": "Use a list of arguments.",
+         "file": "run.py", "line": 3, "cwe": "CWE-78"}]}}
+    client, _ = _setup(make_app, review)
+    body = client.post("/v1/review", data={"rubric": "code-review-en", "text": "import os\nos.system(cmd)"}).json()
+    assert body["security"]["risk"] == "high"
+    assert body["security"]["issues"][0] == {"severity": "high", "title": "Command injection",
+                                             "detail": "Use a list of arguments.", "file": "run.py", "line": 3, "cwe": "CWE-78"}
+    assert body["production"]["verdict"] == "not_ready"
 
 
 def test_short_code_is_reviewed(make_app: Callable[..., FastAPI]) -> None:
@@ -222,7 +263,9 @@ def test_document_reviews_have_no_suggestions(make_app: Callable[..., FastAPI]) 
     text = "Jane Doe. Software developer with five years of experience in Python and cloud services."
     response = client.post("/v1/review", data={"rubric": "cv-en", "text": text})
     assert response.status_code == 200
-    assert response.json()["suggestions"] == [] and response.json()["languages"] == []
+    body = response.json()
+    assert body["suggestions"] == [] and body["languages"] == []
+    assert body["production"] is None and body["security"] is None
 
 
 def test_code_review_demo_page(client: TestClient) -> None:
@@ -237,3 +280,4 @@ def test_code_review_demo_page(client: TestClient) -> None:
     assert config["extensionLanguages"][".py"] == "Python" and config["maxCodeFiles"] == 20
     assert config["languageRules"] and config["minLanguageScore"] > 0
     assert 'id="suggestion-list"' in page and 'id="detected-language"' in page
+    assert 'id="production-badge"' in page and 'id="security-list"' in page

@@ -2,7 +2,7 @@
 # `input: code` keeps the formatting, numbers the lines and accepts several source files.
 id: code-review-fi
 name: Code review (Finnish)
-description: Reviews source code in any programming language from 0 to 5 stars, with strengths, areas to improve and suggested code changes, in Finnish.
+description: Reviews source code in any programming language from 0 to 5 stars, with production readiness, security risks, strengths, areas to improve and suggested code changes, in Finnish.
 language: fi
 labels: [Huono, Heikko, Tyydyttävä, Hyvä, Erittäin hyvä, Erinomainen]
 input: code
@@ -23,6 +23,17 @@ prompt: |
   6. Suorituskyky — turha työ, sopimattomat tietorakenteet, toistuvat kyselyt
   7. Kielen käytännöt — noudattaa kielen tapoja ja standardikirjastoa
 
+  Tarkista tietoturva huolellisesti, esimerkiksi: injektiot (SQL, komento, LDAP), XSS,
+  koodiin kirjoitetut salaisuudet tai avaimet, puuttuva tunnistautuminen tai pääsynhallinta,
+  polkujen läpikulku (path traversal), SSRF, turvaton deserialisointi tai eval, heikko
+  kryptografia tai satunnaisuus, arkaluonteiset tiedot lokeissa ja turvattomat oletukset.
+  Raportoi vain tämän koodin todelliset riskit, kukin CWE-tunnisteella, jos se tiedetään.
+
+  Päätä, onko koodi valmis tuotantoon:
+  - "ready": ei tunnettuja virheitä tai tietoturvaongelmia, virheet käsitellään
+  - "needs_work": toimii, mutta pitää korjata ennen tuotantoa
+  - "not_ready": virheitä tai korkea tai kriittinen tietoturvariski
+
   Arvioi koodi sen tarkoitukseen nähden: lyhyt skripti ei tarvitse laajaa arkkitehtuuria.
   0 tähteä = rikki tai turvaton, 5 tähteä = valmis tuotantoon.
 
@@ -35,6 +46,23 @@ prompt: |
     "summary": "<suomeksi, 2-4 lausetta: ohjelmointikieli, mitä koodi tekee ja sen yleinen laatu>",
     "strengths": ["<konkreettinen vahvuus 1>", "<konkreettinen vahvuus 2>", "<konkreettinen vahvuus 3>"],
     "weaknesses": ["<tiedosto ja rivi: ongelma 1>", "<tiedosto ja rivi: ongelma 2>", "<tiedosto ja rivi: ongelma 3>"],
+    "production": {
+      "verdict": "<ready | needs_work | not_ready>",
+      "reason": "<suomeksi, yksi lause: miksi>"
+    },
+    "security": {
+      "risk": "<none | low | medium | high | critical>",
+      "issues": [
+        {
+          "severity": "<low | medium | high | critical>",
+          "title": "<suomeksi: haavoittuvuuden lyhyt nimi>",
+          "detail": "<suomeksi: miksi se on riski ja miten se korjataan>",
+          "file": "<tiedoston nimi, tai null>",
+          "line": <rivinumero, tai null>,
+          "cwe": "<CWE-tunniste, kuten CWE-89, tai null>"
+        }
+      ]
+    },
     "suggestions": [
       {
         "file": "<tiedoston nimi ==>-otsikosta, tai null yksittäiselle liitetylle koodille>",
@@ -47,4 +75,5 @@ prompt: |
   }
 
   Anna enintään 5 ehdotusta tärkeimmistä ongelmista, kukin mahdollisimman pienenä.
-  Palauta tyhjä lista, jos mitään ei tarvitse muuttaa.
+  Palauta tyhjä lista, jos mitään ei tarvitse muuttaa, ja "risk": "none" ilman ongelmia,
+  jos tietoturvariskejä ei ole.
