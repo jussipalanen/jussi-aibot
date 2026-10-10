@@ -58,6 +58,20 @@
       strengths: "Strengths",
       weaknesses: "To improve",
       again: "Review another",
+      production: "Production readiness",
+      verdict_ready: "Ready for production",
+      verdict_needs_work: "Needs work first",
+      verdict_not_ready: "Not ready",
+      security: "Security risk",
+      risk_none: "No known risks",
+      risk_low: "Low",
+      risk_medium: "Medium",
+      risk_high: "High",
+      risk_critical: "Critical",
+      issueCount: "{count} issues found",
+      issueCountOne: "1 issue found",
+      noIssues: "No vulnerabilities found",
+      securityIssues: "Security issues",
       suggestions: "Suggested changes",
       current: "Current",
       suggested: "Replace with",
@@ -132,6 +146,20 @@
       strengths: "Vahvuudet",
       weaknesses: "Kehityskohteet",
       again: "Arvioi toinen",
+      production: "Tuotantovalmius",
+      verdict_ready: "Valmis tuotantoon",
+      verdict_needs_work: "Vaatii korjauksia",
+      verdict_not_ready: "Ei valmis",
+      security: "Tietoturvariski",
+      risk_none: "Ei tunnettuja riskejä",
+      risk_low: "Matala",
+      risk_medium: "Kohtalainen",
+      risk_high: "Korkea",
+      risk_critical: "Kriittinen",
+      issueCount: "{count} ongelmaa löytyi",
+      issueCountOne: "1 ongelma löytyi",
+      noIssues: "Haavoittuvuuksia ei löytynyt",
+      securityIssues: "Tietoturvaongelmat",
       suggestions: "Ehdotetut muutokset",
       current: "Nykyinen",
       suggested: "Korvaa tällä",
@@ -645,6 +673,76 @@
     $("suggestions").hidden = !list.children.length;
   }
 
+  // ── Production readiness and security (code page) ──────
+  const TONES = {
+    ready: "good", needs_work: "warn", not_ready: "bad",
+    none: "good", low: "warn", medium: "warn", high: "bad", critical: "bad",
+  };
+  const ICONS = { good: "✓", warn: "!", bad: "✕" };
+
+  function setBadge(element, value, label) {
+    const tone = TONES[value] || "warn";
+    element.dataset.tone = tone;
+    const icon = document.createElement("span");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = ICONS[tone];
+    element.replaceChildren(icon, label);
+  }
+
+  function renderVerdicts(production, security) {
+    $("verdicts").hidden = !production && !security;
+    $("production").hidden = !production;
+    if (production) {
+      setBadge($("production-badge"), production.verdict, t("verdict_" + production.verdict));
+      $("production-reason").textContent = production.reason || "";
+    }
+    $("security").hidden = !security;
+    const issues = security ? security.issues || [] : [];
+    if (security) {
+      setBadge($("security-badge"), security.risk, t("risk_" + security.risk));
+      $("security-count").textContent = issues.length === 0 ? t("noIssues")
+        : issues.length === 1 ? t("issueCountOne") : t("issueCount", { count: issues.length });
+    }
+
+    const list = $("security-list");
+    list.replaceChildren(...issues.map((issue) => {
+      const li = document.createElement("li");
+      li.className = "security-issue";
+      const head = document.createElement("div");
+      head.className = "issue-head";
+      const severity = document.createElement("span");
+      severity.className = "severity";
+      severity.dataset.tone = TONES[issue.severity];
+      severity.textContent = t("risk_" + issue.severity);
+      const title = document.createElement("strong");
+      title.textContent = issue.title;
+      head.append(severity, title);
+      const where = [issue.file, issue.line ? t("line", { n: issue.line }) : ""].filter(Boolean).join(" · ");
+      if (where) {
+        const location = document.createElement("code");
+        location.className = "where";
+        location.textContent = where;
+        head.append(location);
+      }
+      if (issue.cwe) {
+        const link = document.createElement("a");
+        link.href = "https://cwe.mitre.org/data/definitions/" + issue.cwe.slice(4) + ".html";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = issue.cwe;
+        head.append(link);
+      }
+      li.append(head);
+      if (issue.detail) {
+        const detail = document.createElement("p");
+        detail.textContent = issue.detail;
+        li.append(detail);
+      }
+      return li;
+    }));
+    $("security-issues").hidden = !issues.length;
+  }
+
   function renderResult(data) {
     const stars = Math.max(0, Math.min(5, Number(data.stars) || 0));
     renderStars(stars);
@@ -664,6 +762,7 @@
     $("summary").textContent = data.summary || "—";
     fillList("strengths", data.strengths);
     fillList("weaknesses", data.weaknesses);
+    renderVerdicts(data.production, data.security);
     renderSuggestions(data.suggestions);
   }
 

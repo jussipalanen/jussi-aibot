@@ -2,7 +2,7 @@
 # `input: code` keeps the formatting, numbers the lines and accepts several source files.
 id: code-review-en
 name: Code review (English)
-description: Reviews source code in any programming language from 0 to 5 stars, with strengths, areas to improve and suggested code changes, in English.
+description: Reviews source code in any programming language from 0 to 5 stars, with production readiness, security risks, strengths, areas to improve and suggested code changes, in English.
 language: en
 labels: [Poor, Weak, Fair, Good, Very good, Excellent]
 input: code
@@ -23,6 +23,16 @@ prompt: |
   6. Performance — needless work, unsuitable data structures, repeated queries
   7. Idioms — follows the language's conventions and standard library
 
+  Check security carefully, for example: injection (SQL, command, LDAP), cross-site scripting,
+  hard-coded secrets or keys, missing authentication or authorisation, path traversal, SSRF,
+  unsafe deserialisation or eval, weak cryptography or randomness, sensitive data in logs,
+  and insecure defaults. Report only real risks in this code, each with its CWE id when known.
+
+  Decide whether the code is ready for production:
+  - "ready": no known bugs or security issues, errors are handled
+  - "needs_work": works, but should be fixed before production
+  - "not_ready": bugs, or a high or critical security risk
+
   Rate the code for its purpose: a short script does not need a large architecture.
   0 stars = broken or unsafe, 5 stars = ready for production.
 
@@ -35,6 +45,23 @@ prompt: |
     "summary": "<in English, 2-4 sentences: the language, what the code does and its overall quality>",
     "strengths": ["<specific strength 1>", "<specific strength 2>", "<specific strength 3>"],
     "weaknesses": ["<file name and line: problem 1>", "<file name and line: problem 2>", "<file name and line: problem 3>"],
+    "production": {
+      "verdict": "<ready | needs_work | not_ready>",
+      "reason": "<in English, one sentence: why>"
+    },
+    "security": {
+      "risk": "<none | low | medium | high | critical>",
+      "issues": [
+        {
+          "severity": "<low | medium | high | critical>",
+          "title": "<in English: short name of the vulnerability>",
+          "detail": "<in English: why it is a risk and how to fix it>",
+          "file": "<file name, or null>",
+          "line": <line number, or null>,
+          "cwe": "<CWE id such as CWE-89, or null>"
+        }
+      ]
+    },
     "suggestions": [
       {
         "file": "<file name from the ==> header, or null for a single pasted snippet>",
@@ -47,4 +74,5 @@ prompt: |
   }
 
   Give up to 5 suggestions for the most important problems, each as small as possible.
-  Use an empty list when nothing needs changing.
+  Use an empty list when nothing needs changing, and "risk": "none" with no issues when
+  there are no security risks.

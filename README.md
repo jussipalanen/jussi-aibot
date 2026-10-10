@@ -166,12 +166,33 @@ curl -X POST http://localhost:8080/v1/review \
   -F "file=@app/routes.py"
 ```
 
-The result has the usual fields plus `languages` (detected programming languages) and `suggestions`: what to replace and what to use instead.
+The result has the usual fields plus:
+
+- `languages` — the detected programming languages
+- `production` — is the code ready for production: `ready`, `needs_work` or `not_ready`, with a reason
+- `security` — the overall risk (`none`, `low`, `medium`, `high`, `critical`) and the vulnerabilities found, most severe first, with file, line and CWE id
+- `suggestions` — what to replace and what to use instead
+
+The service keeps the verdicts consistent: the risk is never lower than the most severe issue, and a `high` or `critical` risk always means `not_ready`. These are an AI's judgement, a quick first check rather than a replacement for a security audit or tools such as bandit, Semgrep or CodeQL.
 
 ```json
 {
   "rubric": "code-review-en",
   "languages": ["Python"],
+  "production": { "verdict": "not_ready", "reason": "The SQL injection must be fixed first." },
+  "security": {
+    "risk": "critical",
+    "issues": [
+      {
+        "severity": "critical",
+        "title": "SQL injection",
+        "detail": "The query is built from user input. Use a parameterised query.",
+        "file": "db.py",
+        "line": 14,
+        "cwe": "CWE-89"
+      }
+    ]
+  },
   "stars": 3,
   "rating_text": "Good",
   "summary": "A small Flask API in Python. Clear structure, but one query is open to SQL injection...",
@@ -315,7 +336,7 @@ Two browser pages for trying reviews, linked from the home page and from each ot
 | Page | What it does |
 |---|---|
 | `/demo/review` — **CV & application review** | Choose CV or job application, then drag and drop a PDF, DOC or DOCX file or paste the text |
-| `/demo/code-review` — **Code review** | Drop up to 20 source files, or paste code in a monospace box with no minimum length. Each file and the pasted code show their detected language. The result adds suggested changes — the current code and its replacement, with a **Copy** button |
+| `/demo/code-review` — **Code review** | Drop up to 20 source files, or paste code in a monospace box with no minimum length. Each file and the pasted code show their detected language. The result adds **Production readiness** and **Security risk** indicators (green, amber or red), the security issues with their CWE links, and suggested changes — the current code and its replacement, with a **Copy** button |
 
 Both pages:
 

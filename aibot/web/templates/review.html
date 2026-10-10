@@ -90,6 +90,18 @@
         <div class="meta" id="result-meta"></div>
       </div>
     </div>
+    <div class="verdicts" id="verdicts" hidden>
+      <div class="verdict" id="production">
+        <h2 data-i18n="production">Production readiness</h2>
+        <p class="badge" id="production-badge"></p>
+        <p class="hint" id="production-reason"></p>
+      </div>
+      <div class="verdict" id="security">
+        <h2 data-i18n="security">Security risk</h2>
+        <p class="badge" id="security-badge"></p>
+        <p class="hint" id="security-count"></p>
+      </div>
+    </div>
     <h2 data-i18n="summary">Summary</h2>
     <p id="summary"></p>
     <div class="columns">
@@ -102,6 +114,10 @@
         <ul id="weaknesses"></ul>
       </div>
     </div>
+    <section class="security-issues" id="security-issues" hidden>
+      <h2 data-i18n="securityIssues">Security issues</h2>
+      <ul id="security-list"></ul>
+    </section>
     <section class="suggestions" id="suggestions" hidden>
       <h2 data-i18n="suggestions">Suggested changes</h2>
       <ol id="suggestion-list"></ol>

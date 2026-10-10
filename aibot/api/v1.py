@@ -53,6 +53,27 @@ class CodeSuggestion(BaseModel):
     replacement: str = Field(description="The code to use instead")
 
 
+class ProductionVerdict(BaseModel):
+    verdict: Literal["ready", "needs_work", "not_ready"] = Field(
+        description="`not_ready` whenever the security risk is high or critical")
+    reason: str
+
+
+class SecurityIssue(BaseModel):
+    severity: Literal["low", "medium", "high", "critical"]
+    title: str
+    detail: str = Field(description="Why it is a risk and how to fix it")
+    file: str | None = None
+    line: int | None = None
+    cwe: str | None = Field(None, description="CWE id, e.g. `CWE-89`", examples=["CWE-89"])
+
+
+class SecurityReport(BaseModel):
+    risk: Literal["none", "low", "medium", "high", "critical"] = Field(
+        description="Overall risk; never lower than the most severe issue")
+    issues: list[SecurityIssue] = Field(description="Vulnerabilities found, most severe first")
+
+
 class ReviewResult(BaseModel):
     rubric: str
     language: str
@@ -64,6 +85,10 @@ class ReviewResult(BaseModel):
     weaknesses: list[str]
     languages: list[str] = Field(
         default_factory=list, description="Programming languages detected in the code, from rubrics with `input: code`")
+    production: ProductionVerdict | None = Field(
+        None, description="Whether the code is ready for production, from rubrics with `input: code`")
+    security: SecurityReport | None = Field(
+        None, description="Security risk and vulnerabilities, from rubrics with `input: code`")
     suggestions: list[CodeSuggestion] = Field(
         default_factory=list, description="Code changes, from rubrics with `input: code`; empty otherwise")
 

@@ -15,6 +15,10 @@ from aibot.review.languages import detect_language
 
 DOCUMENT_PLACEHOLDER = "{document_text}"
 MAX_SUGGESTIONS = 10
+MAX_SECURITY_ISSUES = 10
+VERDICTS = ("ready", "needs_work", "not_ready")
+SEVERITIES = ("low", "medium", "high", "critical")
+RISKS = ("none", *SEVERITIES)
 _LINE_PREFIX = re.compile(r"^ *\d+ \| ?", re.MULTILINE)
 
 
@@ -106,6 +110,60 @@ def _snippet(value: object) -> str:
     return _LINE_PREFIX.sub("", str(value or "")).strip("\n")
 
 
+def _line(value: object) -> int | None:
+    try:
+        line = int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+    return line if line and line > 0 else None
+
+
+def _security(value: object) -> dict:
+    """The security risk and the vulnerabilities found, most severe first.
+
+    The overall risk is never lower than the most severe issue, whatever the model says.
+    """
+    data = value if isinstance(value, dict) else {}
+    issues = []
+    for item in data.get("issues") if isinstance(data.get("issues"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        severity = str(item.get("severity") or "").strip().lower()
+        if not title or severity not in SEVERITIES:
+            continue
+        cwe = str(item.get("cwe") or "").strip().upper()
+        issues.append({
+            "severity": severity,
+            "title": title,
+            "detail": str(item.get("detail") or "").strip(),
+            "file": str(item.get("file") or "").strip() or None,
+            "line": _line(item.get("line")),
+            "cwe": cwe if re.fullmatch(r"CWE-\d{1,5}", cwe) else None,
+        })
+    issues.sort(key=lambda issue: SEVERITIES.index(issue["severity"]), reverse=True)
+    issues = issues[:MAX_SECURITY_ISSUES]
+
+    risk = str(data.get("risk") or "").strip().lower()
+    risk = risk if risk in RISKS else "none"
+    worst = issues[0]["severity"] if issues else "none"
+    if RISKS.index(worst) > RISKS.index(risk):
+        risk = worst
+    return {"risk": risk, "issues": issues}
+
+
+def _production(value: object, security: dict) -> dict | None:
+    """Whether the code can go to production. High or critical security risk always means not ready."""
+    data = value if isinstance(value, dict) else {}
+    verdict = str(data.get("verdict") or "").strip().lower()
+    if verdict not in VERDICTS:
+        return None
+    reason = str(data.get("reason") or "").strip()
+    if security["risk"] in ("high", "critical") and verdict != "not_ready":
+        verdict = "not_ready"
+    return {"verdict": verdict, "reason": reason}
+
+
 def _suggestions(value: object) -> list[dict]:
     """Code changes the model proposes: what is wrong, the current code and its replacement."""
     if not isinstance(value, list):
@@ -118,13 +176,9 @@ def _suggestions(value: object) -> list[dict]:
         issue = str(item.get("issue") or "").strip()
         if not replacement or not issue:
             continue
-        try:
-            line = int(item["line"]) if item.get("line") is not None else None
-        except (TypeError, ValueError):
-            line = None
         result.append({
             "file": str(item.get("file") or "").strip() or None,
-            "line": line if line and line > 0 else None,
+            "line": _line(item.get("line")),
             "issue": issue,
             "original": _snippet(item.get("original")),
             "replacement": replacement,
@@ -164,6 +218,8 @@ async def review_document(
     else:
         raise ProviderError("The model did not return a valid review.")
 
+    code = rubric.input == "code"
+    security = _security(parsed.get("security")) if code else None
     return {
         "rubric": rubric.id,
         "language": rubric.language,
@@ -173,6 +229,8 @@ async def review_document(
         "summary": summary,
         "strengths": strengths,
         "weaknesses": weaknesses,
-        "languages": code_languages(document_text) if rubric.input == "code" else [],
+        "languages": code_languages(document_text) if code else [],
+        "production": _production(parsed.get("production"), security) if code else None,
+        "security": security,
         "suggestions": _suggestions(parsed.get("suggestions")),
     }

@@ -14,6 +14,8 @@
   --good-soft: #ebfbee;
   --bad: #c92a2a;
   --bad-soft: #fff0f0;
+  --warn: #c25e00;
+  --warn-soft: #fff4e6;
   --star: #f59f00;
   --star-off: #dfe3ec;
   --radius: 14px;
@@ -36,6 +38,8 @@
     --good-soft: #14261b;
     --bad: #ff8787;
     --bad-soft: #2a1a1e;
+    --warn: #ffa94d;
+    --warn-soft: #2b2112;
     --star: #fcc419;
     --star-off: #2c3446;
     color-scheme: dark;
@@ -345,6 +349,35 @@ textarea.code { white-space: pre; overflow-x: auto; }
 .bad { color: var(--bad); }
 .result .button { margin-top: 24px; }
 
+/* Production readiness and security risk: one tile each, coloured by tone. */
+.verdicts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 24px; }
+.verdict { padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; }
+.result .verdict h2 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+.result .verdict .hint { margin: 8px 0 0; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.result p.badge { margin: 0; }
+[data-tone="good"] { background: var(--good-soft); color: var(--good); }
+[data-tone="warn"] { background: var(--warn-soft); color: var(--warn); }
+[data-tone="bad"] { background: var(--bad-soft); color: var(--bad); }
+
+.security-issues { margin-top: 24px; }
+.security-issues ul { margin: 0; padding: 0; list-style: none; }
+.security-issue { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; }
+.security-issue + .security-issue { margin-top: 10px; }
+.security-issue .issue-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.severity { padding: 1px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+.security-issue .where { font-size: 13px; color: var(--accent); }
+.security-issue a { font-size: 13px; color: var(--accent); }
+.result .security-issue p { margin: 6px 0 0; }
+
 /* Suggested code changes: what to replace and what to use instead. */
 .suggestions { margin-top: 24px; }
 .suggestions ol { margin: 0; padding: 0; list-style: none; counter-reset: suggestion; }
@@ -387,7 +420,7 @@ textarea.code { white-space: pre; overflow-x: auto; }
 @media (max-width: 600px) {
   .card { padding: 20px; }
   .home .card { padding: 32px 20px; }
-  .columns { grid-template-columns: 1fr; }
+  .columns, .verdicts { grid-template-columns: 1fr; }
   .stars svg { width: 30px; height: 30px; }
   .container > h1 { font-size: 26px; }
   .tabs { display: flex; }
