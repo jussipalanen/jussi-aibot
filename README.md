@@ -336,7 +336,7 @@ Two browser pages for trying reviews, linked from the home page and from each ot
 | Page | What it does |
 |---|---|
 | `/demo/review` — **CV & application review** | Choose CV or job application, then drag and drop a PDF, DOC or DOCX file or paste the text |
-| `/demo/code-review` — **Code review** | Drop up to 20 source files, or paste code in a monospace box with no minimum length. Each file and the pasted code show their detected language. The result adds **Production readiness** and **Security risk** indicators (green, amber or red), the security issues with their CWE links, and suggested changes — the current code and its replacement, with a **Copy** button |
+| `/demo/code-review` — **Code review** | Drop up to 20 source files, or paste code in a code box with line numbers and no minimum length. Each file and the pasted code show their detected language. The result adds **Production readiness** and **Security risk** indicators (green, amber or red), the security issues with their CWE links, and suggested changes — the current code and its replacement. For pasted code, **Apply** (or **Apply all**) writes a change into the code box (Ctrl+Z undoes it); for uploaded files, **Copy** copies it |
 
 Both pages:
 

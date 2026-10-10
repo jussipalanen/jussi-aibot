@@ -66,7 +66,10 @@
 
     <div id="panel-text" role="tabpanel" aria-labelledby="tab-text" hidden>
       <label class="field-label" for="text-input" data-i18n="textLabel">Document text</label>
-      <textarea id="text-input" maxlength="{{max_chars}}" spellcheck="false" data-i18n-placeholder="textPlaceholder" placeholder="Paste the CV or application text here…"></textarea>
+      <div class="editor" id="editor">
+        <pre class="line-numbers" id="line-numbers" aria-hidden="true" hidden></pre>
+        <textarea id="text-input" maxlength="{{max_chars}}" spellcheck="false" data-i18n-placeholder="textPlaceholder" placeholder="Paste the CV or application text here…"></textarea>
+      </div>
       <div class="text-meta">
         <p class="hint" id="detected-language" aria-live="polite" hidden></p>
         <p class="hint counter" id="char-count"></p>
@@ -119,7 +122,11 @@
       <ul id="security-list"></ul>
     </section>
     <section class="suggestions" id="suggestions" hidden>
-      <h2 data-i18n="suggestions">Suggested changes</h2>
+      <div class="suggestions-head">
+        <h2 data-i18n="suggestions">Suggested changes</h2>
+        <button type="button" class="button small" id="apply-all" data-i18n="applyAll" hidden>Apply all</button>
+      </div>
+      <p class="hint" id="applied-hint" data-i18n="appliedHint" hidden>Changes were made in the code box. Review again to check them.</p>
       <ol id="suggestion-list"></ol>
     </section>
     <button type="button" class="button" id="again" data-i18n="again">Review another</button>

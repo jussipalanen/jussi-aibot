@@ -299,6 +299,36 @@ textarea.code, .code-block pre {
   tab-size: 4;
 }
 textarea.code { white-space: pre; overflow-x: auto; }
+
+/* Code box with line numbers: the gutter and the text share one border and scroll together. */
+.editor.with-lines {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--field);
+  overflow: hidden;
+}
+.editor.with-lines:focus-within { outline: 3px solid var(--accent); outline-offset: 1px; }
+.editor.with-lines textarea { border: 0; border-radius: 0; background: transparent; }
+.editor.with-lines textarea:focus-visible { outline: none; }
+.line-numbers {
+  /* The text box sets the height; the gutter only follows its scrolling. */
+  height: 0;
+  min-height: 100%;
+  margin: 0;
+  padding: 10px 10px 40px;
+  min-width: 3.5ch;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.5;
+  text-align: right;
+  user-select: none;
+}
 .hint { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
 .counter { text-align: right; margin-left: auto; }
 .text-meta { display: flex; gap: 12px; align-items: baseline; }
@@ -381,6 +411,10 @@ textarea.code { white-space: pre; overflow-x: auto; }
 
 /* Suggested code changes: what to replace and what to use instead. */
 .suggestions { margin-top: 24px; }
+.suggestions-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.result .suggestions-head h2 { margin: 0; }
+.result .button.small { margin: 0; padding: 6px 14px; font-size: 14px; }
+.result #applied-hint { margin: -4px 0 12px; }
 .suggestions ol { margin: 0; padding: 0; list-style: none; counter-reset: suggestion; }
 .suggestion { counter-increment: suggestion; }
 .suggestion + .suggestion { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
@@ -407,6 +441,7 @@ textarea.code { white-space: pre; overflow-x: auto; }
 .code-block.removed figcaption { background: var(--bad-soft); color: var(--bad); }
 .code-block.added figcaption { background: var(--good-soft); color: var(--good); }
 .code-block pre { margin: 0; padding: 12px; overflow-x: auto; background: var(--field); color: var(--text); line-height: 1.5; }
+.code-block .actions { display: flex; gap: 6px; }
 .result .code-block .copy {
   margin: 0;
   padding: 2px 10px;
@@ -417,6 +452,7 @@ textarea.code { white-space: pre; overflow-x: auto; }
   font: inherit;
   cursor: pointer;
 }
+.result .code-block .copy:disabled { cursor: default; opacity: 0.75; }
 
 @media (max-width: 600px) {
   .card { padding: 20px; }

@@ -78,6 +78,12 @@
       line: "line {n}",
       copy: "Copy",
       copied: "Copied",
+      apply: "Apply",
+      applied: "Applied",
+      notFound: "Not found",
+      notFoundTitle: "The current code is no longer in the code box. Copy the change instead.",
+      applyAll: "Apply all",
+      appliedHint: "Changes were made in the code box. Review again to check them.",
       starsLabel: "{count} out of 5 stars",
       errType: "Unsupported file type. Use a PDF, DOC or DOCX file, or paste the text instead.",
       errSize: "The file is too large. The limit is {mb} MB.",
@@ -166,6 +172,12 @@
       line: "rivi {n}",
       copy: "Kopioi",
       copied: "Kopioitu",
+      apply: "Käytä",
+      applied: "Käytetty",
+      notFound: "Ei löytynyt",
+      notFoundTitle: "Nykyistä koodia ei enää ole koodikentässä. Kopioi muutos sen sijaan.",
+      applyAll: "Käytä kaikki",
+      appliedHint: "Muutokset tehtiin koodikenttään. Arvioi uudelleen tarkistaaksesi ne.",
       starsLabel: "{count}/5 tähteä",
       errType: "Tiedostotyyppiä ei tueta. Käytä PDF-, DOC- tai DOCX-tiedostoa tai liitä teksti.",
       errSize: "Tiedosto on liian suuri. Enimmäiskoko on {mb} Mt.",
@@ -211,6 +223,8 @@
   let selectedFiles = [];
   let loading = false;
   let lastResult = null;
+  let reviewedText = false; // the last review was of the code box, so its suggestions can be applied there
+  let appliedState = {}; // suggestion index → "applied" | "notFound"
   let lastError = null; // { key, vars, detail } so it can be re-translated
 
   // ── Translation ─────────────────────────────────────────
@@ -252,6 +266,7 @@
     renderFiles();
     updateCharCount();
     updateDetectedLanguage();
+    updateLineNumbers();
     setLoading(loading);
     if (lastError) showError(lastError.key, lastError.vars, lastError.detail);
     if (lastResult) renderResult(lastResult);
@@ -378,6 +393,26 @@
     return DOCUMENT_EXTENSIONS.includes(dot > 0 ? name.slice(dot).toLowerCase() : "");
   }
 
+  // ── Line numbers (code page) ────────────────────────────
+  const lineNumbers = $("line-numbers");
+
+  function updateLineNumbers() {
+    if (!CODE_PAGE) return;
+    const count = textInput.value.split("\n").length;
+    if (lineNumbers.dataset.count !== String(count)) {
+      lineNumbers.dataset.count = count;
+      lineNumbers.textContent = Array.from({ length: count }, (_, i) => i + 1).join("\n");
+    }
+    lineNumbers.scrollTop = textInput.scrollTop;
+  }
+
+  if (CODE_PAGE) {
+    $("editor").classList.add("with-lines");
+    lineNumbers.hidden = false;
+    textInput.wrap = "off";
+    textInput.addEventListener("scroll", () => { lineNumbers.scrollTop = textInput.scrollTop; });
+  }
+
   fileInput.multiple = CODE_PAGE;
   fileInput.accept = (CODE_PAGE ? Object.keys(config.extensionLanguages) : DOCUMENT_EXTENSIONS).join(",");
   textInput.classList.toggle("code", CODE_PAGE);
@@ -483,6 +518,7 @@
   textInput.addEventListener("input", () => {
     updateCharCount();
     updateDetectedLanguage();
+    updateLineNumbers();
   });
 
   // ── Errors ──────────────────────────────────────────────
@@ -577,6 +613,9 @@
         return;
       }
       lastResult = await response.json();
+      reviewedText = mode === "text";
+      appliedState = {};
+      $("applied-hint").hidden = true;
       renderResult(lastResult);
       result.hidden = false;
       result.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -621,6 +660,117 @@
     }
   }
 
+  // ── Applying suggestions to the code box ────────────────
+  function leadingSpace(text) {
+    return text.match(/^[ \t]*/)[0];
+  }
+
+  // Where the suggestion's current code is in the box: an exact match first, then line by
+  // line ignoring indentation. When it appears more than once, the one nearest the reported
+  // line wins. Returns { start, end, fuzzy } character offsets, or null.
+  function findOriginal(text, original, lineHint) {
+    const lines = text.split("\n");
+    const starts = [0];
+    for (const line of lines) starts.push(starts[starts.length - 1] + line.length + 1);
+    const lineAt = (offset) => {
+      let line = 0;
+      while (starts[line + 1] <= offset) line++;
+      return line + 1;
+    };
+
+    const matches = [];
+    for (let i = text.indexOf(original); i !== -1; i = text.indexOf(original, i + 1)) {
+      matches.push({ start: i, end: i + original.length, line: lineAt(i), fuzzy: false });
+    }
+    if (!matches.length) {
+      const wanted = original.split("\n").map((line) => line.trim()).filter(Boolean);
+      for (let i = 0; wanted.length && i < lines.length; i++) {
+        let j = i;
+        let k = 0;
+        while (j < lines.length && k < wanted.length) {
+          if (!lines[j].trim() && k > 0) { j++; continue; }
+          if (lines[j].trim() !== wanted[k]) break;
+          j++;
+          k++;
+        }
+        if (k === wanted.length) {
+          matches.push({ start: starts[i], end: starts[j - 1] + lines[j - 1].length, line: i + 1, fuzzy: true });
+        }
+      }
+    }
+    if (!matches.length) return null;
+    const target = lineHint || 1;
+    matches.sort((a, b) => Math.abs(a.line - target) - Math.abs(b.line - target));
+    return matches[0];
+  }
+
+  // Moves the replacement to the indentation of the code it replaces.
+  function reindent(code, from, to) {
+    if (from === to) return code;
+    return code.split("\n").map((line) => (line.trim() && line.startsWith(from) ? to + line.slice(from.length) : line)).join("\n");
+  }
+
+  function replaceRange(start, end, value) {
+    textInput.focus({ preventScroll: true });
+    textInput.setSelectionRange(start, end);
+    // insertText keeps the browser's undo history, so Ctrl+Z undoes the change.
+    let done = false;
+    try { done = document.execCommand("insertText", false, value); } catch (error) { /* not supported */ }
+    if (!done) {
+      textInput.setRangeText(value, start, end, "end");
+      textInput.dispatchEvent(new Event("input"));
+    }
+  }
+
+  function applySuggestion(item) {
+    const text = textInput.value;
+    if (!item.original) {
+      // Added code: insert it before the reported line.
+      const lines = text.split("\n");
+      const index = Math.min(item.line - 1, lines.length);
+      const offset = Math.min(lines.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0), text.length);
+      replaceRange(offset, offset, item.replacement + "\n");
+      return true;
+    }
+    const match = findOriginal(text, item.original, item.line);
+    if (!match) return false;
+    const replacement = match.fuzzy
+      ? reindent(item.replacement, leadingSpace(item.original), leadingSpace(text.slice(match.start)))
+      : item.replacement;
+    replaceRange(match.start, match.end, replacement);
+    return true;
+  }
+
+  function canApply(item) {
+    return CODE_PAGE && reviewedText && Boolean(item.original || item.line);
+  }
+
+  function applyAt(index) {
+    if (appliedState[index]) return;
+    appliedState[index] = applySuggestion(lastResult.suggestions[index]) ? "applied" : "notFound";
+    if (appliedState[index] === "applied") $("applied-hint").hidden = false;
+  }
+
+  $("apply-all").addEventListener("click", () => {
+    lastResult.suggestions.forEach((item, index) => { if (canApply(item)) applyAt(index); });
+    renderSuggestions(lastResult.suggestions);
+  });
+
+  function applyButton(index) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy";
+    const state = appliedState[index];
+    button.textContent = state === "applied" ? "✓ " + t("applied") : state === "notFound" ? t("notFound") : t("apply");
+    button.disabled = Boolean(state);
+    if (state === "notFound") button.title = t("notFoundTitle");
+    button.addEventListener("click", () => {
+      applyAt(index);
+      renderSuggestions(lastResult.suggestions);
+    });
+    return button;
+  }
+
   function codeBlock(kind, code) {
     const figure = document.createElement("figure");
     figure.className = "code-block " + kind;
@@ -628,6 +778,9 @@
     const label = document.createElement("span");
     label.textContent = t(kind === "added" ? "suggested" : "current");
     caption.append(label);
+    const actions = document.createElement("span");
+    actions.className = "actions";
+    caption.append(actions);
     if (kind === "added" && navigator.clipboard) {
       const copy = document.createElement("button");
       copy.type = "button";
@@ -640,7 +793,7 @@
           setTimeout(() => { copy.textContent = t("copy"); }, 1500);
         } catch (error) { /* clipboard not allowed */ }
       });
-      caption.append(copy);
+      actions.append(copy);
     }
     const pre = document.createElement("pre");
     const codeElement = document.createElement("code");
@@ -653,7 +806,7 @@
   function renderSuggestions(items) {
     const list = $("suggestion-list");
     list.replaceChildren();
-    for (const item of items || []) {
+    (items || []).forEach((item, index) => {
       const li = document.createElement("li");
       li.className = "suggestion";
       const head = document.createElement("p");
@@ -667,10 +820,13 @@
       head.append(item.issue);
       li.append(head);
       if (item.original) li.append(codeBlock("removed", item.original));
-      li.append(codeBlock("added", item.replacement));
+      const added = codeBlock("added", item.replacement);
+      if (canApply(item)) added.querySelector(".actions").prepend(applyButton(index));
+      li.append(added);
       list.append(li);
-    }
+    });
     $("suggestions").hidden = !list.children.length;
+    $("apply-all").hidden = !(items || []).some((item, index) => canApply(item) && !appliedState[index]);
   }
 
   // ── Production readiness and security (code page) ──────
