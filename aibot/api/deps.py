@@ -3,7 +3,7 @@ Shared request dependencies and error mapping.
 """
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 import httpx
 from fastapi import Depends, HTTPException, Request, UploadFile, status
@@ -14,7 +14,17 @@ from aibot.agents.engine import AgentUnavailable
 from aibot.agents.registry import AgentRegistry
 from aibot.knowledge.sources import SourceUnavailable
 from aibot.llm import ProviderError, ProviderNotConfigured, ProviderRegistry
-from aibot.review.extract import ALLOWED_EXTENSIONS, UnsupportedDocument, extract_document_text, normalize_whitespace
+from aibot.review.extract import (
+    ALLOWED_EXTENSIONS,
+    UnsupportedDocument,
+    clean_filename,
+    extract_code_text,
+    extract_document_text,
+    file_header,
+    is_code_file,
+    normalize_code,
+    normalize_whitespace,
+)
 from aibot.review.rubrics import Rubric
 from aibot.security import Client, ClientRegistry, RateLimiter
 from aibot.settings import Settings
@@ -22,6 +32,10 @@ from aibot.settings import Settings
 T = TypeVar("T")
 
 MAX_TEXT_CHARS = 100_000
+
+MAX_CODE_FILES = 20
+
+InputKind = Literal["document", "code"]
 
 
 @dataclass
@@ -104,11 +118,45 @@ async def read_document(file: UploadFile, max_bytes: int) -> str:
     return text
 
 
-def read_text(text: str) -> str:
-    """Validate pasted document text and return it normalized."""
+async def read_code_files(files: list[UploadFile], max_bytes: int) -> str:
+    """Validate source file uploads and join them, each under a `==> name <==` header."""
+    if len(files) > MAX_CODE_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many files. Send at most {MAX_CODE_FILES}.",
+        )
+    parts = []
+    total = 0
+    for file in files:
+        name = clean_filename(file.filename or "")
+        if not name or not is_code_file(name):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file type: '{name}'. Upload source code files.",
+            )
+        file_bytes = await file.read(max_bytes + 1 - total)
+        total += len(file_bytes)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"Files too large. Max total size is {max_bytes // (1024 * 1024)}MB.",
+            )
+        try:
+            code = normalize_code(extract_code_text(file_bytes))
+        except UnsupportedDocument as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{name}: {exc}") from exc
+        if code:
+            parts.append(file_header(name) + "\n" + code)
+    if not parts:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded files are empty.")
+    return "\n\n".join(parts)
+
+
+def read_text(text: str, input_kind: InputKind = "document") -> str:
+    """Validate pasted document text or code and return it normalized."""
     if len(text) > MAX_TEXT_CHARS:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"Text too long. Max length is {MAX_TEXT_CHARS} characters.",
         )
-    return normalize_whitespace(text)
+    return normalize_code(text) if input_kind == "code" else normalize_whitespace(text)

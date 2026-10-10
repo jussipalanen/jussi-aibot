@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Request
 from pydantic import BaseModel, Field
 
 from aibot.agents.engine import ChatTurn
-from aibot.api.deps import call_ai, read_document, read_text, require_client, services
+from aibot.api.deps import call_ai, read_code_files, read_document, read_text, require_client, services
 from aibot.review.rubrics import review_document
 from aibot.security import Client
 
@@ -45,6 +45,14 @@ class RubricInfo(BaseModel):
     labels: list[str]
 
 
+class CodeSuggestion(BaseModel):
+    file: str | None = Field(None, description="File name, when several files were reviewed")
+    line: int | None = Field(None, description="First line of `original` in the reviewed code")
+    issue: str = Field(description="What is wrong and why")
+    original: str = Field(description="The current code; empty when code is added")
+    replacement: str = Field(description="The code to use instead")
+
+
 class ReviewResult(BaseModel):
     rubric: str
     language: str
@@ -54,6 +62,8 @@ class ReviewResult(BaseModel):
     summary: str
     strengths: list[str]
     weaknesses: list[str]
+    suggestions: list[CodeSuggestion] = Field(
+        default_factory=list, description="Code changes, from rubrics with `input: code`; empty otherwise")
 
 
 class ProviderInfo(BaseModel):
@@ -123,7 +133,10 @@ async def list_rubrics(
 async def review(
     request: Request,
     client: Annotated[Client, Depends(require_client("review"))],
-    file: Annotated[UploadFile | None, File(description="PDF, DOC or DOCX. Send this or `text`.")] = None,
+    file: Annotated[
+        list[UploadFile] | None,
+        File(description="PDF, DOC or DOCX. Code rubrics take up to 20 source files: repeat the field. Send this or `text`."),
+    ] = None,
     text: Annotated[str | None, Form(description="The document as plain text. Send this or `file`.")] = None,
     rubric: Annotated[str, Form(description="Rubric id from `GET /v1/review/rubrics`")] = "cv-fi",
     provider: Annotated[str | None, Form(description="Provider name; defaults to REVIEW_PROVIDER")] = None,
@@ -131,10 +144,13 @@ async def review(
 ) -> ReviewResult:
     """Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses.
 
-    Upload a file **or** send the text in the `text` field.
+    Upload a file **or** send the text in the `text` field. Code rubrics (such as `code-review-en`)
+    take one or more source files in most programming languages and return `suggestions`:
+    the current code and its replacement.
     """
     svc = services(request)
-    has_file = file is not None and bool(file.filename)
+    files = [f for f in file or [] if f.filename]
+    has_file = bool(files)
     has_text = bool((text or "").strip())
     if has_file and has_text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Send either a file or text, not both.")
@@ -150,10 +166,14 @@ async def review(
             detail=f"Unknown provider '{provider_name}'. Use one of: {', '.join(svc.providers.names())}.",
         )
 
-    if has_file:
-        document = await read_document(file, svc.settings.max_upload_bytes)
+    if has_file and selected.input == "code":
+        document = await read_code_files(files, svc.settings.max_upload_bytes)
+    elif has_file:
+        if len(files) > 1:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This rubric takes one file.")
+        document = await read_document(files[0], svc.settings.max_upload_bytes)
     else:
-        document = read_text(text or "")
+        document = read_text(text or "", selected.input)
     llm = svc.providers.get(provider_name)
     result = await call_ai(lambda: review_document(selected, document, llm, model=(model or "").strip() or None))
     return ReviewResult(**result)
