@@ -276,10 +276,6 @@ textarea { resize: vertical; min-height: 220px; line-height: 1.5; }
 .hint { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
 .counter { text-align: right; }
 
-.advanced { margin-top: 20px; }
-.advanced summary { cursor: pointer; color: var(--muted); font-weight: 600; }
-.advanced[open] summary { margin-bottom: 10px; }
-
 .error {
   margin: 20px 0 0;
   padding: 12px 14px;

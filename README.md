@@ -252,7 +252,7 @@ Who can use it:
 | Setting | Effect |
 |---|---|
 | No clients configured (local dev) | Works without a key |
-| Keys configured, `DEMO_PUBLIC=false` (default) | Visitors enter an API key under **API key** on the page |
+| Keys configured, `DEMO_PUBLIC=false` (default) | The page has no key field, so visitors get "not available"; reviews need the API with a key |
 | `DEMO_PUBLIC=true` | Works without a key from the page itself, for reviews only, limited by `DEMO_RATE_LIMIT` (default `10/day`) |
 | `DEMO_ENABLED=false` | Page and home page link removed |
 
@@ -385,7 +385,7 @@ Create one in [Google AI Studio](https://aistudio.google.com/apikey). No Google 
    | `ALLOWED_ORIGINS` | Your frontends, comma-separated, e.g. `https://jussimatic.com,https://jussispace.com` |
    | `PUTER_API_KEY` | Optional; only for `provider=puter_ai` |
 
-   The Blueprint sets `DEMO_PUBLIC=true`, so visitors can use the review demo without a key (20 reviews a day in total until `FORWARDED_IP_DEPTH` is set). Set it to `false` to require a key.
+   The Blueprint sets `DEMO_PUBLIC=true`, so visitors can use the review demo without a key (20 reviews a day in total until `FORWARDED_IP_DEPTH` is set). Set it to `false` to close the demo to visitors.
 
 4. Click **Apply**. The first build takes a few minutes.
 

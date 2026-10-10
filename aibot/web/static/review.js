@@ -5,7 +5,6 @@
 
   const config = JSON.parse(document.getElementById("review-config").textContent);
   const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx"];
-  const KEY_STORAGE = "aibot.apiKey";
   const LANG_STORAGE = "aibot.lang";
   const LANGUAGES = ["fi", "en"];
 
@@ -31,9 +30,6 @@
       reviewLanguage: "The review is written in {language}.",
       language_fi: "Finnish",
       language_en: "English",
-      apiKey: "API key",
-      apiKeyPlaceholder: "Only needed if this service requires a key",
-      apiKeyHint: "Sent only to this service and kept only in this browser tab.",
       submit: "Review",
       reviewing: "Reviewing…",
       reviewingHint: "Reviewing… this usually takes 5–30 seconds.",
@@ -47,8 +43,7 @@
       errSize: "The file is too large. The limit is {mb} MB.",
       errNoFile: "Choose or drop a file first.",
       errShortText: "Paste the full text of the CV or application (at least 50 characters).",
-      err401Key: "The API key was not accepted. Check it and try again.",
-      err401NoKey: "This service needs an API key. Enter it under “API key” and try again.",
+      err401: "Reviews are not available on this page right now.",
       err403: "This page is not allowed to use the API.",
       err413: "The document is too large.",
       err429: "The review limit has been reached.",
@@ -82,9 +77,6 @@
       reviewLanguage: "Arvio kirjoitetaan {language}.",
       language_fi: "suomeksi",
       language_en: "englanniksi",
-      apiKey: "API-avain",
-      apiKeyPlaceholder: "Tarvitaan vain, jos palvelu vaatii avaimen",
-      apiKeyHint: "Lähetetään vain tälle palvelulle ja säilytetään vain tässä selainvälilehdessä.",
       submit: "Arvioi",
       reviewing: "Arvioidaan…",
       reviewingHint: "Arvioidaan… tämä kestää yleensä 5–30 sekuntia.",
@@ -98,8 +90,7 @@
       errSize: "Tiedosto on liian suuri. Enimmäiskoko on {mb} Mt.",
       errNoFile: "Valitse tai pudota ensin tiedosto.",
       errShortText: "Liitä CV:n tai hakemuksen koko teksti (vähintään 50 merkkiä).",
-      err401Key: "API-avainta ei hyväksytty. Tarkista avain ja yritä uudelleen.",
-      err401NoKey: "Palvelu vaatii API-avaimen. Kirjoita se kohtaan ”API-avain” ja yritä uudelleen.",
+      err401: "Arviointi ei ole tällä sivulla juuri nyt käytettävissä.",
       err403: "Tällä sivulla ei ole oikeutta käyttää rajapintaa.",
       err413: "Asiakirja on liian suuri.",
       err429: "Arvioiden enimmäismäärä on täynnä.",
@@ -123,7 +114,6 @@
   const fileChip = $("file-chip");
   const textInput = $("text-input");
   const kindSelect = $("kind");
-  const apiKeyInput = $("api-key");
   const errorBox = $("form-error");
   const submitButton = $("submit-button");
   const submitHint = $("submit-hint");
@@ -314,15 +304,6 @@
   }
   textInput.addEventListener("input", updateCharCount);
 
-  // ── API key (kept for this tab only) ────────────────────
-  try {
-    apiKeyInput.value = sessionStorage.getItem(KEY_STORAGE) || "";
-    if (apiKeyInput.value) $("advanced").open = true;
-  } catch (error) { /* storage unavailable */ }
-  apiKeyInput.addEventListener("change", () => {
-    try { sessionStorage.setItem(KEY_STORAGE, apiKeyInput.value.trim()); } catch (error) { /* ignore */ }
-  });
-
   // ── Errors ──────────────────────────────────────────────
   function showError(key, vars, detail) {
     lastError = { key, vars, detail };
@@ -352,8 +333,7 @@
 
     switch (response.status) {
       case 401:
-        $("advanced").open = true;
-        return showError(apiKeyInput.value.trim() ? "err401Key" : "err401NoKey");
+        return showError("err401");
       case 403:
         return showError("err403", null, detail);
       case 413:
@@ -362,12 +342,13 @@
         const wait = parseInt(response.headers.get("Retry-After") || "", 10);
         return wait ? showError("err429Wait", { wait: waitText(wait) }) : showError("err429");
       }
+      // Server errors can quote the AI provider, model included, so their detail stays hidden.
       case 502:
-        return showError("err502", null, detail);
+        return showError("err502");
       case 503:
-        return showError("err503", null, detail);
+        return showError("err503");
       default:
-        return showError("errOther", { status: response.status }, detail);
+        return showError("errOther", { status: response.status }, response.status < 500 ? detail : "");
     }
   }
 
@@ -406,13 +387,9 @@
       data.append("text", text);
     }
 
-    const headers = {};
-    const key = apiKeyInput.value.trim();
-    if (key) headers.Authorization = "Bearer " + key;
-
     setLoading(true);
     try {
-      const response = await fetch("/v1/review", { method: "POST", body: data, headers });
+      const response = await fetch("/v1/review", { method: "POST", body: data });
       if (!response.ok) {
         await showResponseError(response);
         return;
@@ -475,7 +452,6 @@
     const kind = kinds.find((k) => Object.values(rubricsByKind[k]).some((r) => r.id === data.rubric));
     const parts = [kind ? kindLabel(kind) : data.rubric];
     if (data.language) parts.push(t("language_" + data.language));
-    if (data.provider) parts.push(data.provider);
     $("result-meta").textContent = parts.join(" · ");
 
     $("summary").textContent = data.summary || "—";
