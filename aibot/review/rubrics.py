@@ -11,6 +11,7 @@ from aibot.configfile import load_yaml_dir
 from aibot.llm import LLMProvider, Message, ProviderError
 from aibot.review import cv_fi
 from aibot.review.extract import FILE_HEADER
+from aibot.review.languages import detect_language
 
 DOCUMENT_PLACEHOLDER = "{document_text}"
 MAX_SUGGESTIONS = 10
@@ -87,6 +88,19 @@ def _string_list(value: object) -> list[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def code_languages(document: str) -> list[str]:
+    """Languages in a code document: one per `==> name <==` file, or the pasted code as a whole."""
+    parts = FILE_HEADER.split(document)
+    # split() gives [text before the first header, name, code, name, code, ...]
+    sections = [(None, document)] if len(parts) == 1 else list(zip(parts[1::2], parts[2::2]))
+    languages: list[str] = []
+    for filename, code in sections:
+        language = detect_language(code, filename)
+        if language and language not in languages:
+            languages.append(language)
+    return languages
+
+
 def _snippet(value: object) -> str:
     """Code from a suggestion, without the line numbers the model may have copied."""
     return _LINE_PREFIX.sub("", str(value or "")).strip("\n")
@@ -159,5 +173,6 @@ async def review_document(
         "summary": summary,
         "strengths": strengths,
         "weaknesses": weaknesses,
+        "languages": code_languages(document_text) if rubric.input == "code" else [],
         "suggestions": _suggestions(parsed.get("suggestions")),
     }

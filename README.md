@@ -15,11 +15,11 @@ A configurable AI agent platform built with FastAPI. It runs **chat agents** tha
 - 🛠️ **Native tool calling** — the model calls your REST endpoints directly
 - 🔎 **RAG** — search results ranked by meaning with embeddings
 - 📝 **Document reviews** — 0–5 stars, summary, strengths and weaknesses, per rubric and language
-- 🧑‍💻 **Code reviews** — source code in most programming languages, several files at once, with suggested code changes (current code → replacement)
+- 🧑‍💻 **Code reviews** — source code in most programming languages, several files at once, automatic language detection, and suggested code changes (current code → replacement)
 - 🧠 **Many AI providers** — Gemini (API key or Vertex AI), Puter, OpenAI, Groq, OpenRouter, Mistral, Ollama
 - 🔐 **Per-client API keys** — each client gets its own agents, origins and rate limit
 - 📄 **PDF, DOC and DOCX** uploads, or plain text
-- 🌐 **Review demo** — a browser form in Finnish and English at `/demo/review`, for CVs, applications and code
+- 🌐 **Review demos** — browser pages in Finnish and English: `/demo/review` for CVs and applications, `/demo/code-review` for code
 
 ## API documentation
 
@@ -28,12 +28,13 @@ The API documents itself. Open the root URL for a home page with links, or go st
 | | Local | Production (Cloud Run) |
 |---|---|---|
 | Home page | [`localhost:8080/`](http://localhost:8080/) | [`/`](https://jussi-aibot-production-61766311353.europe-north1.run.app/) |
-| **Review demo** (CV, application & code review) | [`localhost:8080/demo/review`](http://localhost:8080/demo/review) | [`/demo/review`](https://jussi-aibot-production-61766311353.europe-north1.run.app/demo/review) |
+| **Review demo** (CV & application review) | [`localhost:8080/demo/review`](http://localhost:8080/demo/review) | [`/demo/review`](https://jussi-aibot-production-61766311353.europe-north1.run.app/demo/review) |
+| **Code review demo** | [`localhost:8080/demo/code-review`](http://localhost:8080/demo/code-review) | [`/demo/code-review`](https://jussi-aibot-production-61766311353.europe-north1.run.app/demo/code-review) |
 | **Swagger UI** (try requests in the browser) | [`localhost:8080/docs`](http://localhost:8080/docs) | [`/docs`](https://jussi-aibot-production-61766311353.europe-north1.run.app/docs) |
 | ReDoc (readable reference) | [`localhost:8080/redoc`](http://localhost:8080/redoc) | [`/redoc`](https://jussi-aibot-production-61766311353.europe-north1.run.app/redoc) |
 | OpenAPI JSON | [`localhost:8080/openapi.json`](http://localhost:8080/openapi.json) | [`/openapi.json`](https://jussi-aibot-production-61766311353.europe-north1.run.app/openapi.json) |
 
-On Render the same paths work on your service URL, e.g. `https://<your-service>.onrender.com/docs` and `https://<your-service>.onrender.com/demo/review`.
+On Render the same paths work on your service URL, e.g. `https://<your-service>.onrender.com/docs`, `https://<your-service>.onrender.com/demo/review` and `https://<your-service>.onrender.com/demo/code-review`.
 
 In Swagger UI, click **Authorize** and enter your API key to call protected endpoints.
 
@@ -155,7 +156,7 @@ Optional form fields: `provider` (defaults to `REVIEW_PROVIDER`) and `model`.
 ![Shell](https://img.shields.io/badge/-Shell-4EAA25?logo=gnubash&logoColor=white)
 ![and more](https://img.shields.io/badge/-and%20more-lightgrey)
 
-Use the `code-review-en` or `code-review-fi` rubric. Send up to 20 source files (repeat `file`) or paste the code in `text`; the AI detects the language. Line breaks and indentation are kept, and lines are numbered so findings point to them.
+Use the `code-review-en` or `code-review-fi` rubric. Send up to 20 source files (repeat `file`) or paste the code in `text`; there is no minimum length. Line breaks and indentation are kept, and lines are numbered so findings point to them.
 
 ```bash
 curl -X POST http://localhost:8080/v1/review \
@@ -165,11 +166,12 @@ curl -X POST http://localhost:8080/v1/review \
   -F "file=@app/routes.py"
 ```
 
-The result has the usual fields plus `suggestions`: what to replace and what to use instead.
+The result has the usual fields plus `languages` (detected programming languages) and `suggestions`: what to replace and what to use instead.
 
 ```json
 {
   "rubric": "code-review-en",
+  "languages": ["Python"],
   "stars": 3,
   "rating_text": "Good",
   "summary": "A small Flask API in Python. Clear structure, but one query is open to SQL injection...",
@@ -187,7 +189,9 @@ The result has the usual fields plus `suggestions`: what to replace and what to 
 }
 ```
 
-Accepted files: `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.java`, `.kt`, `.scala`, `.go`, `.rs`, `.c`, `.h`, `.cpp`, `.hpp`, `.cs`, `.php`, `.rb`, `.swift`, `.dart`, `.lua`, `.r`, `.sql`, `.sh`, `.ps1`, `.html`, `.css`, `.scss`, `.json`, `.yaml`, `.toml`, `.xml`, `.tf`, `Dockerfile`, `Makefile` and more (see `CODE_EXTENSIONS` in `aibot/review/extract.py`). Files must be UTF-8 text. Up to 60 000 characters are reviewed per request.
+Accepted files: `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.java`, `.kt`, `.scala`, `.go`, `.rs`, `.c`, `.h`, `.cpp`, `.hpp`, `.cs`, `.php`, `.rb`, `.swift`, `.dart`, `.lua`, `.r`, `.sql`, `.sh`, `.ps1`, `.html`, `.css`, `.scss`, `.json`, `.yaml`, `.toml`, `.xml`, `.tf`, `Dockerfile`, `Makefile` and more. Files must be UTF-8 text. Up to 60 000 characters are reviewed per request.
+
+**Language detection** (`aibot/review/languages.py`): a file's language comes from its name (`EXTENSION_LANGUAGES`); pasted code is matched against weighted regular expressions (`LANGUAGE_RULES`) for Python, JavaScript, TypeScript, Java, Kotlin, C#, C, C++, Go, Rust, PHP, Ruby, Swift, SQL, Shell, HTML, CSS, JSON, YAML and Dockerfile. The code review page runs the same rules in the browser, so the language shown while typing matches the result. To support a new language, add its extension and, optionally, a rule. Rules run on untrusted input, so keep them within one line (`[ \t]` rather than `\s`) and avoid nested repeats; `tests/test_code_review.py` checks that hostile input stays fast.
 
 ### Errors
 
@@ -302,16 +306,22 @@ Each file in `config/rubrics/` is a rubric:
 
 Add your own by copying one: set `id`, `language`, six `labels` (for 0–5 stars) and a `prompt` that contains `{document_text}` and asks for JSON with `stars`, `summary`, `strengths` and `weaknesses`. Name it `<type>-<language>` (e.g. `portfolio-fi`) so the demo page groups the language versions under one document type.
 
-Set `input: code` for source code: the rubric then takes up to 20 source files instead of one document, keeps line breaks and indentation, numbers the lines (restarting for each `==> file <==`), and returns any `suggestions` the prompt asks for (`file`, `line`, `issue`, `original`, `replacement`). For example, a rubric that checks only security could copy `code-review-en.yaml` with a narrower prompt.
+Set `input: code` for source code: the rubric then takes up to 20 source files instead of one document, keeps line breaks and indentation, numbers the lines (restarting for each `==> file <==`), detects the `languages`, and returns any `suggestions` the prompt asks for (`file`, `line`, `issue`, `original`, `replacement`). Code rubrics appear on the code review page, the others on the CV & application page. For example, a rubric that checks only security could copy `code-review-en.yaml` with a narrower prompt.
 
-### Review demo (`/demo/review`)
+### Review demos (`/demo/review` and `/demo/code-review`)
 
-A browser page for trying reviews, linked from the home page:
+Two browser pages for trying reviews, linked from the home page and from each other:
 
-- Choose the document type: CV, job application or code review
-- Drag and drop a PDF, DOC or DOCX file, or paste the text. For code review, drop several source files or paste code in a monospace box.
+| Page | What it does |
+|---|---|
+| `/demo/review` — **CV & application review** | Choose CV or job application, then drag and drop a PDF, DOC or DOCX file or paste the text |
+| `/demo/code-review` — **Code review** | Drop up to 20 source files, or paste code in a monospace box with no minimum length. Each file and the pasted code show their detected language. The result adds suggested changes — the current code and its replacement, with a **Copy** button |
+
+Both pages:
+
 - **Suomi / English** switch for the page and the review language. The default comes from `?lang=fi` or `?lang=en`, the visitor's last choice, or the browser language.
-- Shows the stars, rating, summary, strengths and areas to improve. Code reviews also show suggested changes: the current code and its replacement, with a **Copy** button.
+- Show the stars, rating, summary, strengths and areas to improve.
+- Share one template (`review.html`) and script (`review.js`); `config.page` picks the rubrics and texts.
 
 Who can use it:
 
@@ -320,7 +330,7 @@ Who can use it:
 | No clients configured (local dev) | Works without a key |
 | Keys configured, `DEMO_PUBLIC=false` (default) | The page has no key field, so visitors get "not available"; reviews need the API with a key |
 | `DEMO_PUBLIC=true` | Works without a key from the page itself, for reviews only, limited by `DEMO_RATE_LIMIT` (default `10/day`) |
-| `DEMO_ENABLED=false` | Page and home page link removed |
+| `DEMO_ENABLED=false` | Both pages and the home page links removed |
 
 With `DEMO_PUBLIC=true`, anyone can use your AI quota up to the demo limit. Set `FORWARDED_IP_DEPTH` so the limit applies per visitor rather than to everyone together (see **Rate limits**).
 
@@ -465,7 +475,7 @@ curl $BASE/health                                              # {"status":"ok"}
 curl -H "Authorization: Bearer $AI_SECRET_KEY" $BASE/v1/providers   # gemini: configured true
 ```
 
-Then open `$BASE/demo/review` and review a CV, or open `$BASE/docs`, click **Authorize**, and try `POST /v1/agents/jussispace/chat`.
+Then open `$BASE/demo/review` and review a CV, or `$BASE/demo/code-review` and review some code, or open `$BASE/docs`, click **Authorize**, and try `POST /v1/agents/jussispace/chat`.
 
 ### 4. Point your frontends at Render
 
@@ -579,7 +589,7 @@ See `.env.example` for a commented template.
 | `DAILY_RATE_LIMIT` | `50/day` | Default rate limit |
 | `FORWARDED_IP_DEPTH` | `0` | Client IP position in `X-Forwarded-For` from the right |
 | `LOG_FORWARDED_FOR` | `false` | Log forwarded headers to find the depth |
-| `DEMO_ENABLED` | `true` | Serve the review demo at `/demo/review` |
+| `DEMO_ENABLED` | `true` | Serve the review demos at `/demo/review` and `/demo/code-review` |
 | `DEMO_PUBLIC` | `false` | Allow the demo page without a key (reviews only) |
 | `DEMO_RATE_LIMIT` | `10/day` | Limit for keyless demo reviews |
 
@@ -598,7 +608,7 @@ pytest tests/test_engine.py -v          # one file
 |---|---|
 | `tests/test_api.py` | Home page, health, legacy `/ai/chat` and `/ai/review` |
 | `tests/test_demo.py` | Review demo page, plain-text reviews, demo access rules |
-| `tests/test_code_review.py` | Code reviews: source files, several files, line numbers, suggestions |
+| `tests/test_code_review.py` | Code reviews: source files, several files, line numbers, suggestions, language detection, code review page |
 | `tests/test_v1.py` | `/v1` endpoints, rubrics, shipped config files |
 | `tests/test_engine.py` | Agent loop, HTTP tools, pagination, login refresh, RAG, context sources |
 | `tests/test_providers.py` | Gemini and OpenAI-compatible message conversion |
@@ -631,13 +641,13 @@ aibot/
   settings.py              Environment settings
   configfile.py            YAML loading with ${ENV} substitution
   security.py              Clients, keys, origins, rate limits
-  api/                     Routes: pages.py (/, /demo/review, /health), v1.py, legacy.py
+  api/                     Routes: pages.py (/, /demo/review, /demo/code-review, /health), v1.py, legacy.py
   web/                     Home and demo page templates, CSS and JavaScript
   agents/                  Agent config schema, registry and the shared agent loop
   tools/http.py            Configurable HTTP tools and auth sessions
   knowledge/               RAG ranking, context sources, JSON-to-text rendering
   llm/                     Providers: gemini, openai_compat, puter, local
-  review/                  Text and code extraction, rubrics, legacy Finnish review
+  review/                  Text and code extraction, language detection, rubrics, legacy Finnish review
 config/
   agents/*.yaml            Agent definitions
   rubrics/*.yaml           Review rubrics

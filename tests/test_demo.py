@@ -22,11 +22,12 @@ def _client(make_app: Callable[..., FastAPI], **env: str) -> TestClient:
 
 # ── Pages ──────────────────────────────────────────────────────────────────
 
-def test_home_links_to_demo(client: TestClient) -> None:
+def test_home_links_to_demos(client: TestClient) -> None:
     page = client.get("/").text
-    assert 'href="/demo/review"' in page
+    assert 'href="/demo/review"' in page and 'href="/demo/code-review"' in page
     assert 'href="/docs"' in page
-    assert client.get("/", headers={"accept": "application/json"}).json()["demos"] == ["/demo/review"]
+    demos = client.get("/", headers={"accept": "application/json"}).json()["demos"]
+    assert demos == ["/demo/review", "/demo/code-review"]
 
 
 def _page_config(page: str) -> dict:
@@ -47,9 +48,12 @@ def test_demo_page(client: TestClient) -> None:
 
 
 def test_demo_page_has_finnish_and_english_rubrics(client: TestClient) -> None:
-    rubrics = {r["id"]: r["language"] for r in _page_config(client.get("/demo/review").text)["rubrics"]}
+    config = _page_config(client.get("/demo/review").text)
+    assert config["page"] == "document"
+    rubrics = {r["id"]: r["language"] for r in config["rubrics"]}
     assert rubrics["cv-fi"] == "fi" and rubrics["cv-en"] == "en"
     assert rubrics["cover-letter-fi"] == "fi" and rubrics["cover-letter-en"] == "en"
+    assert not any(rubric.startswith("code-review") for rubric in rubrics)
 
 
 def test_demo_config_cannot_break_out_of_script(make_app: Callable[..., FastAPI]) -> None:
@@ -67,6 +71,7 @@ def test_static_assets(client: TestClient) -> None:
 def test_demo_can_be_disabled(make_app: Callable[..., FastAPI]) -> None:
     client = _client(make_app, DEMO_ENABLED="false")
     assert client.get("/demo/review").status_code == 404
+    assert client.get("/demo/code-review").status_code == 404
     assert 'href="/demo/review"' not in client.get("/").text
 
 

@@ -173,7 +173,8 @@ textarea:focus-visible, input:focus-visible, summary:focus-visible {
 }
 .topbar nav { display: flex; align-items: center; gap: 16px; font-size: 15px; }
 .topbar nav a { color: var(--muted); text-decoration: none; white-space: nowrap; }
-.topbar nav a:hover { color: var(--accent); }
+.topbar nav a:hover, .topbar nav a[aria-current="page"] { color: var(--accent); }
+.topbar nav a[aria-current="page"] { font-weight: 600; }
 
 .lang-switch {
   display: inline-flex;
@@ -253,6 +254,16 @@ textarea:focus-visible, input:focus-visible, summary:focus-visible {
 }
 .file-chip .name { font-weight: 600; overflow-wrap: anywhere; }
 .file-chip .size { color: var(--muted); font-size: 14px; white-space: nowrap; }
+.lang-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .file-chip button {
   margin-left: auto;
   border: 0;
@@ -284,7 +295,9 @@ textarea.code, .code-block pre {
 }
 textarea.code { white-space: pre; overflow-x: auto; }
 .hint { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
-.counter { text-align: right; }
+.counter { text-align: right; margin-left: auto; }
+.text-meta { display: flex; gap: 12px; align-items: baseline; }
+#detected-language strong { color: var(--accent); }
 
 .error {
   margin: 20px 0 0;
@@ -381,8 +394,11 @@ textarea.code { white-space: pre; overflow-x: auto; }
   .tab { flex: 1; }
 }
 
+@media (max-width: 820px) {
+  .topbar .wordmark, .topbar nav .docs-link { display: none; }
+}
 @media (max-width: 480px) {
-  .topbar .wordmark, .topbar nav a { display: none; }
+  .topbar nav a { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

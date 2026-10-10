@@ -1,5 +1,5 @@
 """
-Text extraction from uploaded PDF, DOCX and DOC files.
+Text extraction from uploaded PDF, DOCX and DOC files, and from source files for code reviews.
 """
 import io
 import os
@@ -10,20 +10,15 @@ import tempfile
 import pdfplumber
 from docx import Document
 
+from aibot.review.languages import EXTENSION_LANGUAGES, FILENAME_LANGUAGES
+
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docs", ".docx"}
 
-# Source files accepted by rubrics with `input: code`.
-CODE_EXTENSIONS = frozenset({
-    ".py", ".pyi", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte",
-    ".java", ".kt", ".kts", ".scala", ".groovy", ".gradle", ".go", ".rs", ".c", ".h",
-    ".cpp", ".cc", ".cxx", ".hpp", ".cs", ".fs", ".vb", ".php", ".rb", ".swift", ".m",
-    ".dart", ".lua", ".pl", ".r", ".jl", ".ex", ".exs", ".erl", ".hs", ".clj", ".ml",
-    ".zig", ".sol", ".sql", ".sh", ".bash", ".zsh", ".ps1", ".bat", ".html", ".css",
-    ".scss", ".less", ".json", ".yaml", ".yml", ".toml", ".xml", ".tf",
-})
-CODE_FILENAMES = frozenset({"dockerfile", "makefile", "jenkinsfile"})
+# Source files accepted by rubrics with `input: code`: every file with a known language.
+CODE_EXTENSIONS = frozenset(EXTENSION_LANGUAGES)
+CODE_FILENAMES = frozenset(FILENAME_LANGUAGES)
 # Starts each file when several are reviewed together; line numbers restart after it.
-FILE_HEADER = re.compile(r"^==> (.+) <==$")
+FILE_HEADER = re.compile(r"^==> (.+) <==$", re.MULTILINE)
 
 
 class UnsupportedDocument(ValueError):

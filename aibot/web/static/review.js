@@ -1,22 +1,32 @@
-// CV, application & code review demo: file uploads or pasted text → POST /v1/review.
-// The page and the review are available in Finnish and English. Code reviews take
-// several source files and come back with suggested changes (current code → replacement).
+// Review demos: file uploads or pasted text → POST /v1/review, in Finnish and English.
+// One script serves two pages, picked by `config.page`:
+//   "document" (/demo/review)       CVs and job applications, one PDF, DOC or DOCX file
+//   "code"     (/demo/code-review)  source code: several files, language detection and
+//                                   suggested changes (current code → replacement)
 (function () {
   "use strict";
 
   const config = JSON.parse(document.getElementById("review-config").textContent);
+  const CODE_PAGE = config.page === "code";
   const DOCUMENT_EXTENSIONS = [".pdf", ".doc", ".docx"];
   const LANG_STORAGE = "aibot.lang";
   const LANGUAGES = ["fi", "en"];
 
   const STRINGS = {
     en: {
-      pageTitle: "CV, application & code review",
+      pageTitle: "CV & application review",
+      pageTitleCode: "Code review",
+      navReview: "CV review",
+      navCode: "Code review",
       navDocs: "API docs",
-      title: "CV, application & code review",
-      lead: "Upload a CV, job application or source code, or paste its text. The AI rates it from 0 to 5 stars, lists its strengths and what to improve, and suggests code changes.",
+      title: "CV & application review",
+      titleCode: "Code review",
+      lead: "Upload a CV or job application, or paste its text. The AI rates it from 0 to 5 stars and lists its strengths and what to improve.",
+      leadCode: "Upload source files or paste code. The language is detected automatically, and the AI rates the code from 0 to 5 stars and suggests changes: what to replace and what to use instead.",
       tabFile: "Upload file",
       tabText: "Paste text",
+      tabFileCode: "Upload files",
+      tabTextCode: "Paste code",
       dropTitle: "Drag and drop a file here",
       dropOr: "or",
       dropChoose: "choose a file",
@@ -29,6 +39,8 @@
       textPlaceholder: "Paste the CV or application text here…",
       textLabelCode: "Code",
       textPlaceholderCode: "Paste the code here…",
+      detectedLanguage: "Detected language: {language}",
+      unknownLanguage: "Language not recognised yet",
       chars: "{count} / {max} characters",
       kindLabel: "Document type",
       kind_cv: "CV",
@@ -41,6 +53,7 @@
       reviewing: "Reviewing…",
       reviewingHint: "Reviewing… this usually takes 5–30 seconds.",
       privacy: "The document is sent to an AI service for the review and is not stored here. Avoid uploading sensitive personal data you don't want to share.",
+      privacyCode: "The code is sent to an AI service for the review and is not stored here. Don't include secrets such as passwords or API keys.",
       summary: "Summary",
       strengths: "Strengths",
       weaknesses: "To improve",
@@ -55,13 +68,15 @@
       errType: "Unsupported file type. Use a PDF, DOC or DOCX file, or paste the text instead.",
       errSize: "The file is too large. The limit is {mb} MB.",
       errNoFile: "Choose or drop a file first.",
+      errNoFileCode: "Choose or drop source files first.",
       errShortText: "Paste the full text of the CV or application (at least 50 characters).",
+      errShortTextCode: "Paste some code first.",
       errTypeCode: "Unsupported file: {name}. Use source code files, such as .py, .js, .ts, .java or .go.",
       errTooManyFiles: "Choose at most {files} files.",
-      errShortCode: "Paste at least 50 characters of code.",
       err401: "Reviews are not available on this page right now.",
       err403: "This page is not allowed to use the API.",
       err413: "The document is too large.",
+      err413Code: "The code is too large.",
       err429: "The review limit has been reached.",
       err429Wait: "The review limit has been reached. Try again in {wait}.",
       err502: "The AI service could not finish the review. Please try again.",
@@ -73,12 +88,19 @@
       hours: "{n} hours",
     },
     fi: {
-      pageTitle: "CV-, hakemus- ja koodiarvio",
+      pageTitle: "CV- ja hakemusarvio",
+      pageTitleCode: "Koodikatselmointi",
+      navReview: "CV-arvio",
+      navCode: "Koodikatselmointi",
       navDocs: "API-dokumentaatio",
-      title: "CV-, hakemus- ja koodiarvio",
-      lead: "Lataa CV, työhakemus tai lähdekoodia tai liitä sen teksti. Tekoäly arvioi sen asteikolla 0–5 tähteä, kertoo vahvuudet ja kehityskohteet ja ehdottaa muutoksia koodiin.",
+      title: "CV- ja hakemusarvio",
+      titleCode: "Koodikatselmointi",
+      lead: "Lataa CV tai työhakemus tai liitä sen teksti. Tekoäly arvioi sen asteikolla 0–5 tähteä ja kertoo vahvuudet ja kehityskohteet.",
+      leadCode: "Lataa lähdekooditiedostoja tai liitä koodi. Ohjelmointikieli tunnistetaan automaattisesti, ja tekoäly arvioi koodin asteikolla 0–5 tähteä ja ehdottaa muutoksia: mitä korvata ja millä.",
       tabFile: "Lataa tiedosto",
       tabText: "Liitä teksti",
+      tabFileCode: "Lataa tiedostot",
+      tabTextCode: "Liitä koodi",
       dropTitle: "Vedä ja pudota tiedosto tähän",
       dropOr: "tai",
       dropChoose: "valitse tiedosto",
@@ -91,6 +113,8 @@
       textPlaceholder: "Liitä CV:n tai hakemuksen teksti tähän…",
       textLabelCode: "Koodi",
       textPlaceholderCode: "Liitä koodi tähän…",
+      detectedLanguage: "Tunnistettu kieli: {language}",
+      unknownLanguage: "Kieltä ei vielä tunnistettu",
       chars: "{count} / {max} merkkiä",
       kindLabel: "Asiakirjan tyyppi",
       kind_cv: "CV (ansioluettelo)",
@@ -103,6 +127,7 @@
       reviewing: "Arvioidaan…",
       reviewingHint: "Arvioidaan… tämä kestää yleensä 5–30 sekuntia.",
       privacy: "Asiakirja lähetetään arvioitavaksi tekoälypalvelulle, eikä sitä tallenneta tänne. Älä lataa arkaluonteisia henkilötietoja, joita et halua jakaa.",
+      privacyCode: "Koodi lähetetään arvioitavaksi tekoälypalvelulle, eikä sitä tallenneta tänne. Älä lähetä salaisuuksia, kuten salasanoja tai API-avaimia.",
       summary: "Yhteenveto",
       strengths: "Vahvuudet",
       weaknesses: "Kehityskohteet",
@@ -117,13 +142,15 @@
       errType: "Tiedostotyyppiä ei tueta. Käytä PDF-, DOC- tai DOCX-tiedostoa tai liitä teksti.",
       errSize: "Tiedosto on liian suuri. Enimmäiskoko on {mb} Mt.",
       errNoFile: "Valitse tai pudota ensin tiedosto.",
+      errNoFileCode: "Valitse tai pudota ensin lähdekooditiedostot.",
       errShortText: "Liitä CV:n tai hakemuksen koko teksti (vähintään 50 merkkiä).",
+      errShortTextCode: "Liitä ensin koodia.",
       errTypeCode: "Tiedostoa ei tueta: {name}. Käytä lähdekooditiedostoja, kuten .py, .js, .ts, .java tai .go.",
       errTooManyFiles: "Valitse enintään {files} tiedostoa.",
-      errShortCode: "Liitä vähintään 50 merkkiä koodia.",
       err401: "Arviointi ei ole tällä sivulla juuri nyt käytettävissä.",
       err403: "Tällä sivulla ei ole oikeutta käyttää rajapintaa.",
       err413: "Asiakirja on liian suuri.",
+      err413Code: "Koodi on liian suuri.",
       err429: "Arvioiden enimmäismäärä on täynnä.",
       err429Wait: "Arvioiden enimmäismäärä on täynnä. Yritä uudelleen {wait} kuluttua.",
       err502: "Tekoälypalvelu ei saanut arviota valmiiksi. Yritä uudelleen.",
@@ -159,8 +186,13 @@
   let lastError = null; // { key, vars, detail } so it can be re-translated
 
   // ── Translation ─────────────────────────────────────────
+  // On the code page a "<key>Code" text, when there is one, replaces "<key>".
+  function lookup(key) {
+    return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key];
+  }
+
   function t(key, vars) {
-    let text = (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
+    let text = (CODE_PAGE && lookup(key + "Code")) || lookup(key) || key;
     for (const [name, value] of Object.entries(vars || {})) {
       text = text.split("{" + name + "}").join(String(value));
     }
@@ -187,8 +219,11 @@
     document.querySelectorAll("[data-lang]").forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset.lang === lang));
     });
+    translatePage();
     renderKinds();
+    renderFiles();
     updateCharCount();
+    updateDetectedLanguage();
     setLoading(loading);
     if (lastError) showError(lastError.key, lastError.vars, lastError.detail);
     if (lastResult) renderResult(lastResult);
@@ -196,6 +231,9 @@
 
   function translatePage() {
     const vars = { mb: config.maxUploadMb, files: config.maxCodeFiles };
+    document.querySelectorAll("[data-page]").forEach((link) => {
+      if (link.dataset.page === config.page) link.setAttribute("aria-current", "page");
+    });
     document.querySelectorAll("[data-i18n]").forEach((el) => {
       el.textContent = t(el.dataset.i18n, vars);
     });
@@ -224,14 +262,14 @@
     }
     rubricsByKind[kind][rubric.language] = rubric;
   }
-  // CVs first, then applications, then other types such as code review.
+  // CVs first, then applications, then any other types.
   const KIND_ORDER = ["cv", "cover-letter"];
   const rank = (kind) => (KIND_ORDER.includes(kind) ? KIND_ORDER.indexOf(kind) : KIND_ORDER.length);
   kinds.sort((a, b) => rank(a) - rank(b));
 
   function kindLabel(kind) {
     const key = "kind_" + kind;
-    if ((STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key]) return t(key);
+    if (lookup(key)) return t(key);
     const any = Object.values(rubricsByKind[kind])[0];
     return any ? any.name : kind;
   }
@@ -240,8 +278,9 @@
     const current = kindSelect.value || kinds[0];
     kindSelect.replaceChildren(...kinds.map((kind) => new Option(kindLabel(kind), kind)));
     kindSelect.value = current;
+    // With one type (e.g. code review) there is nothing to choose; only the review language shows.
+    kindSelect.hidden = $("kind-label").hidden = kinds.length < 2;
     updateReviewLanguage();
-    updateInputMode();
   }
 
   function selectedRubric() {
@@ -258,40 +297,62 @@
   kindSelect.addEventListener("change", () => {
     hideError();
     updateReviewLanguage();
-    updateInputMode();
   });
 
-  // ── Documents or code ───────────────────────────────────
-  // Code rubrics take several source files and keep the text's formatting.
-  function isCode() {
-    const rubric = selectedRubric();
-    return Boolean(rubric && rubric.input === "code");
-  }
+  // ── Programming language detection (code page) ──────────
+  // The same rules as aibot/review/languages.py, sent in the page config, so the language
+  // shown here matches the one in the review result. File names decide first.
+  const languageRules = (config.languageRules || []).map((rule) => ({
+    language: rule.language,
+    patterns: rule.patterns.map(([source, weight]) => [new RegExp(source, rule.flags), weight]),
+  }));
 
-  function fileAllowed(name) {
+  function languageForFilename(name) {
     const base = name.toLowerCase().split("/").pop();
     const dot = base.lastIndexOf(".");
     const extension = dot > 0 ? base.slice(dot) : "";
-    if (!isCode()) return DOCUMENT_EXTENSIONS.includes(extension);
-    return config.codeFilenames.includes(base) || config.codeExtensions.includes(extension);
+    return config.filenameLanguages[base] || config.extensionLanguages[extension] || null;
   }
 
-  function updateInputMode() {
-    const code = isCode();
-    const suffix = code ? "Code" : "";
-    $("drop-title").dataset.i18n = "dropTitle" + suffix;
-    $("drop-choose").dataset.i18n = "dropChoose" + suffix;
-    $("drop-types").dataset.i18n = "dropTypes" + suffix;
-    $("text-label").dataset.i18n = "textLabel" + suffix;
-    textInput.dataset.i18nPlaceholder = "textPlaceholder" + suffix;
-    textInput.classList.toggle("code", code);
-    fileInput.multiple = code;
-    fileInput.accept = (code ? config.codeExtensions : DOCUMENT_EXTENSIONS).join(",");
-    // Keep only files that suit the new document type.
-    selectedFiles = selectedFiles.filter((file) => fileAllowed(file.name)).slice(0, code ? config.maxCodeFiles : 1);
-    renderFiles();
-    translatePage();
+  function detectLanguage(code) {
+    let best = null;
+    let bestScore = 0;
+    for (const rule of languageRules) {
+      const score = rule.patterns.reduce((sum, [pattern, weight]) => sum + (pattern.test(code) ? weight : 0), 0);
+      if (score > bestScore) {
+        best = rule.language;
+        bestScore = score;
+      }
+    }
+    return bestScore >= config.minLanguageScore ? best : null;
   }
+
+  function updateDetectedLanguage() {
+    const label = $("detected-language");
+    label.hidden = !CODE_PAGE || !textInput.value.trim();
+    if (label.hidden) return;
+    const language = detectLanguage(textInput.value);
+    label.replaceChildren();
+    if (language) {
+      const [before, after] = t("detectedLanguage").split("{language}");
+      const name = document.createElement("strong");
+      name.textContent = language;
+      label.append(before, name, after || "");
+    } else {
+      label.textContent = t("unknownLanguage");
+    }
+  }
+
+  // ── Page setup ──────────────────────────────────────────
+  function fileAllowed(name) {
+    if (CODE_PAGE) return languageForFilename(name) !== null;
+    const dot = name.lastIndexOf(".");
+    return DOCUMENT_EXTENSIONS.includes(dot > 0 ? name.slice(dot).toLowerCase() : "");
+  }
+
+  fileInput.multiple = CODE_PAGE;
+  fileInput.accept = (CODE_PAGE ? Object.keys(config.extensionLanguages) : DOCUMENT_EXTENSIONS).join(",");
+  textInput.classList.toggle("code", CODE_PAGE);
 
   // ── Tabs ────────────────────────────────────────────────
   function selectTab(name, focus) {
@@ -324,17 +385,14 @@
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   }
 
-  // Documents replace the chosen file; code files are added to the list.
+  // A document replaces the chosen file; code files are added to the list.
   function addFiles(list) {
     hideError();
-    const code = isCode();
     const incoming = Array.from(list || []);
     if (!incoming.length) return;
-    const files = code ? selectedFiles.slice() : [];
-    for (const file of code ? incoming : incoming.slice(0, 1)) {
-      if (!fileAllowed(file.name)) {
-        return code ? showError("errTypeCode", { name: file.name }) : showError("errType");
-      }
+    const files = CODE_PAGE ? selectedFiles.slice() : [];
+    for (const file of CODE_PAGE ? incoming : incoming.slice(0, 1)) {
+      if (!fileAllowed(file.name)) return showError("errType", { name: file.name });
       if (!files.some((f) => f.name === file.name && f.size === file.size)) files.push(file);
     }
     if (files.length > config.maxCodeFiles) return showError("errTooManyFiles", { files: config.maxCodeFiles });
@@ -349,6 +407,11 @@
       const chip = chipTemplate.content.firstElementChild.cloneNode(true);
       chip.querySelector(".name").textContent = file.name;
       chip.querySelector(".size").textContent = formatSize(file.size);
+      if (CODE_PAGE) {
+        const badge = chip.querySelector(".lang-badge");
+        badge.textContent = languageForFilename(file.name);
+        badge.hidden = false;
+      }
       const remove = chip.querySelector(".remove");
       remove.setAttribute("aria-label", t("removeFile") + ": " + file.name);
       remove.addEventListener("click", () => {
@@ -389,7 +452,10 @@
       max: config.maxTextChars.toLocaleString(locale),
     });
   }
-  textInput.addEventListener("input", updateCharCount);
+  textInput.addEventListener("input", () => {
+    updateCharCount();
+    updateDetectedLanguage();
+  });
 
   // ── Errors ──────────────────────────────────────────────
   function showError(key, vars, detail) {
@@ -466,11 +532,11 @@
       if (!selectedFiles.length) return showError("errNoFile");
       for (const file of selectedFiles) data.append("file", file, file.name);
     } else {
-      // Code keeps its indentation; the server trims it without losing the layout.
-      const text = isCode() ? textInput.value : textInput.value.trim();
-      if (text.trim().length < 50) {
+      // Code keeps its indentation and has no minimum length; documents need the full text.
+      const text = CODE_PAGE ? textInput.value : textInput.value.trim();
+      if (CODE_PAGE ? !text.trim() : text.length < 50) {
         textInput.focus();
-        return showError(isCode() ? "errShortCode" : "errShortText");
+        return showError("errShortText");
       }
       data.append("text", text);
     }
@@ -592,6 +658,7 @@
     const kind = kinds.find((k) => Object.values(rubricsByKind[k]).some((r) => r.id === data.rubric));
     const parts = [kind ? kindLabel(kind) : data.rubric];
     if (data.language) parts.push(t("language_" + data.language));
+    if (data.languages && data.languages.length) parts.push(data.languages.join(", "));
     $("result-meta").textContent = parts.join(" · ");
 
     $("summary").textContent = data.summary || "—";

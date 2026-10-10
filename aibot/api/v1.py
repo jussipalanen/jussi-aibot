@@ -62,6 +62,8 @@ class ReviewResult(BaseModel):
     summary: str
     strengths: list[str]
     weaknesses: list[str]
+    languages: list[str] = Field(
+        default_factory=list, description="Programming languages detected in the code, from rubrics with `input: code`")
     suggestions: list[CodeSuggestion] = Field(
         default_factory=list, description="Code changes, from rubrics with `input: code`; empty otherwise")
 

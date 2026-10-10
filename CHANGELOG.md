@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Code review for source code in most programming languages: `code-review-en` and `code-review-fi` rubrics
 - `input: code` rubric option: takes up to 20 source files at once, keeps line breaks and indentation, and numbers the lines per file
 - `suggestions` in `POST /v1/review` results: the file, line, issue, current code and its replacement
-- Code review in the demo page: several source files, a monospace text box, and suggested changes with a **Copy** button
+- Programming language detection (`aibot/review/languages.py`): by file name, then by content; `languages` in code review results
+- Code review demo at `/demo/code-review`, linked from the home page and the CV review page: up to 20 source files with their detected languages, pasted code with live language detection and no minimum length, and suggested changes with a **Copy** button
 - Badges in the README
 
 ### Changed

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>CV, application &amp; code review · {{name}}</title>
+<title>{{title}} · {{name}}</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -15,7 +15,9 @@
     <span class="wordmark">{{name}}</span>
   </a>
   <nav>
-    <a href="/docs" data-i18n="navDocs">API docs</a>
+    <a href="/demo/review" data-page="document" data-i18n="navReview">CV review</a>
+    <a href="/demo/code-review" data-page="code" data-i18n="navCode">Code review</a>
+    <a href="/docs" class="docs-link" data-i18n="navDocs">API docs</a>
     <div class="lang-switch" role="group" aria-label="Language / Kieli">
       <button type="button" data-lang="fi" lang="fi" aria-pressed="false">Suomi</button>
       <button type="button" data-lang="en" lang="en" aria-pressed="true">English</button>
@@ -24,12 +26,12 @@
 </header>
 
 <main class="container">
-  <h1 data-i18n="title">CV, application &amp; code review</h1>
-  <p class="lead" data-i18n="lead">Upload a CV, job application or source code, or paste its text. The AI rates it from 0 to 5 stars, lists its strengths and what to improve, and suggests code changes.</p>
+  <h1 data-i18n="title">{{title}}</h1>
+  <p class="lead" data-i18n="lead">{{lead}}</p>
 
   <form id="review-form" class="card" novalidate>
     <div class="field first">
-      <label for="kind" data-i18n="kindLabel">Document type</label>
+      <label for="kind" id="kind-label" data-i18n="kindLabel">Document type</label>
       <select id="kind"></select>
       <p class="hint" id="review-language"></p>
     </div>
@@ -45,8 +47,8 @@
         <svg class="icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
         </svg>
-        <span class="title" id="drop-title" data-i18n="dropTitle">Drag and drop a file here</span>
-        <span class="hint"><span data-i18n="dropOr">or</span> <u id="drop-choose" data-i18n="dropChoose">choose a file</u> · <span id="drop-types" data-i18n="dropTypes">PDF, DOC or DOCX, up to {mb} MB</span></span>
+        <span class="title" data-i18n="dropTitle">Drag and drop a file here</span>
+        <span class="hint"><span data-i18n="dropOr">or</span> <u data-i18n="dropChoose">choose a file</u> · <span data-i18n="dropTypes">PDF, DOC or DOCX, up to {mb} MB</span></span>
       </label>
       <ul class="file-list" id="file-list" hidden></ul>
       <template id="file-chip-template">
@@ -55,6 +57,7 @@
             <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
           </svg>
           <span class="name"></span>
+          <span class="lang-badge" hidden></span>
           <span class="size"></span>
           <button type="button" class="remove">&times;</button>
         </li>
@@ -62,9 +65,12 @@
     </div>
 
     <div id="panel-text" role="tabpanel" aria-labelledby="tab-text" hidden>
-      <label class="field-label" for="text-input" id="text-label" data-i18n="textLabel">Document text</label>
+      <label class="field-label" for="text-input" data-i18n="textLabel">Document text</label>
       <textarea id="text-input" maxlength="{{max_chars}}" spellcheck="false" data-i18n-placeholder="textPlaceholder" placeholder="Paste the CV or application text here…"></textarea>
-      <p class="hint counter" id="char-count"></p>
+      <div class="text-meta">
+        <p class="hint" id="detected-language" aria-live="polite" hidden></p>
+        <p class="hint counter" id="char-count"></p>
+      </div>
     </div>
 
     <p class="error" id="form-error" role="alert" hidden></p>
