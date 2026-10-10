@@ -157,6 +157,7 @@ textarea:focus-visible, input:focus-visible, summary:focus-visible {
   text-align: left;
   text-decoration: none;
 }
+.demo-link + .demo-link { margin-top: 12px; }
 .demo-link:hover { border-color: var(--accent); }
 .demo-link .icon { flex: none; color: var(--accent); }
 .demo-link strong { display: block; }
