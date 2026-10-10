@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [2.1.0] - 2026-10-10
+
+Code review: the AI reviews source code in most programming languages, says whether it is ready for production and how risky it is, and suggests changes that can be applied with one click.
+
 ### Added
 
 - Code review for source code in most programming languages: `code-review-en` and `code-review-fi` rubrics
@@ -23,6 +29,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The review demo has no API key field and does not show the AI provider; server error details are hidden on the page
 - `POST /v1/review` accepts the `file` field more than once (code rubrics only)
+- `/demo/review` is for CVs and job applications only; code review has its own page at `/demo/code-review`
+- The home page links to both demos
+
+### Fixed
+
+- Spacing between the demo cards on the home page
 
 ---
 

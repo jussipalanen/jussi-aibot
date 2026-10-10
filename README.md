@@ -1,7 +1,7 @@
 # Jussi AI Bot
 
 [![PR Checks](https://github.com/jussipalanen/jussi-aibot/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/jussipalanen/jussi-aibot/actions/workflows/pr-checks.yml)
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.137-009688?logo=fastapi&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
