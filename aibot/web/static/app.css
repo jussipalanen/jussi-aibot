@@ -11,6 +11,7 @@
   --border: #e3e6ef;
   --field: #ffffff;
   --good: #2b8a3e;
+  --good-soft: #ebfbee;
   --bad: #c92a2a;
   --bad-soft: #fff0f0;
   --star: #f59f00;
@@ -32,6 +33,7 @@
     --border: #262d3d;
     --field: #11151f;
     --good: #69db7c;
+    --good-soft: #14261b;
     --bad: #ff8787;
     --bad-soft: #2a1a1e;
     --star: #fcc419;
@@ -238,11 +240,12 @@ textarea:focus-visible, input:focus-visible, summary:focus-visible {
 .dropzone .hint { color: var(--muted); font-size: 14px; }
 .dropzone .hint u { color: var(--accent); }
 
+.file-list { list-style: none; margin: 0; padding: 0; }
 .file-chip {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 12px;
+  margin-top: 8px;
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -262,6 +265,7 @@ textarea:focus-visible, input:focus-visible, summary:focus-visible {
 .file-chip button:hover { color: var(--bad); }
 
 .field { margin-top: 20px; }
+.field.first { margin: 0 0 20px; }
 .field label, .field-label { display: block; font-weight: 600; margin-bottom: 6px; }
 select, textarea, input[type="password"], input[type="text"] {
   width: 100%;
@@ -273,6 +277,12 @@ select, textarea, input[type="password"], input[type="text"] {
   font: inherit;
 }
 textarea { resize: vertical; min-height: 220px; line-height: 1.5; }
+textarea.code, .code-block pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  tab-size: 4;
+}
+textarea.code { white-space: pre; overflow-x: auto; }
 .hint { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
 .counter { text-align: right; }
 
@@ -321,6 +331,45 @@ textarea { resize: vertical; min-height: 220px; line-height: 1.5; }
 .good { color: var(--good); }
 .bad { color: var(--bad); }
 .result .button { margin-top: 24px; }
+
+/* Suggested code changes: what to replace and what to use instead. */
+.suggestions { margin-top: 24px; }
+.suggestions ol { margin: 0; padding: 0; list-style: none; counter-reset: suggestion; }
+.suggestion { counter-increment: suggestion; }
+.suggestion + .suggestion { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+.result .suggestion-head { margin: 0 0 10px; color: var(--text); }
+.suggestion-head::before { content: counter(suggestion) ". "; font-weight: 700; }
+.suggestion-head code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+}
+.code-block { margin: 8px 0 0; border: 1px solid var(--border); border-left-width: 4px; border-radius: 10px; overflow: hidden; }
+.code-block.removed { border-left-color: var(--bad); }
+.code-block.added { border-left-color: var(--good); }
+.code-block figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.code-block.removed figcaption { background: var(--bad-soft); color: var(--bad); }
+.code-block.added figcaption { background: var(--good-soft); color: var(--good); }
+.code-block pre { margin: 0; padding: 12px; overflow-x: auto; background: var(--field); color: var(--text); line-height: 1.5; }
+.result .code-block .copy {
+  margin: 0;
+  padding: 2px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 
 @media (max-width: 600px) {
   .card { padding: 20px; }

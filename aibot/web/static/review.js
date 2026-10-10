@@ -1,32 +1,39 @@
-// CV & application review demo: file upload or pasted text → POST /v1/review.
-// The page and the review are available in Finnish and English.
+// CV, application & code review demo: file uploads or pasted text → POST /v1/review.
+// The page and the review are available in Finnish and English. Code reviews take
+// several source files and come back with suggested changes (current code → replacement).
 (function () {
   "use strict";
 
   const config = JSON.parse(document.getElementById("review-config").textContent);
-  const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx"];
+  const DOCUMENT_EXTENSIONS = [".pdf", ".doc", ".docx"];
   const LANG_STORAGE = "aibot.lang";
   const LANGUAGES = ["fi", "en"];
 
   const STRINGS = {
     en: {
-      pageTitle: "CV & application review",
+      pageTitle: "CV, application & code review",
       navDocs: "API docs",
-      title: "CV & application review",
-      lead: "Upload a CV or job application, or paste its text. The AI rates it from 0 to 5 stars and lists its strengths and what to improve.",
+      title: "CV, application & code review",
+      lead: "Upload a CV, job application or source code, or paste its text. The AI rates it from 0 to 5 stars, lists its strengths and what to improve, and suggests code changes.",
       tabFile: "Upload file",
       tabText: "Paste text",
       dropTitle: "Drag and drop a file here",
       dropOr: "or",
       dropChoose: "choose a file",
       dropTypes: "PDF, DOC or DOCX, up to {mb} MB",
+      dropTitleCode: "Drag and drop source files here",
+      dropChooseCode: "choose files",
+      dropTypesCode: "Up to {files} files in most programming languages, {mb} MB in total",
       removeFile: "Remove file",
       textLabel: "Document text",
       textPlaceholder: "Paste the CV or application text here…",
+      textLabelCode: "Code",
+      textPlaceholderCode: "Paste the code here…",
       chars: "{count} / {max} characters",
       kindLabel: "Document type",
       kind_cv: "CV",
       "kind_cover-letter": "Job application",
+      "kind_code-review": "Code review",
       reviewLanguage: "The review is written in {language}.",
       language_fi: "Finnish",
       language_en: "English",
@@ -38,11 +45,20 @@
       strengths: "Strengths",
       weaknesses: "To improve",
       again: "Review another",
+      suggestions: "Suggested changes",
+      current: "Current",
+      suggested: "Replace with",
+      line: "line {n}",
+      copy: "Copy",
+      copied: "Copied",
       starsLabel: "{count} out of 5 stars",
       errType: "Unsupported file type. Use a PDF, DOC or DOCX file, or paste the text instead.",
       errSize: "The file is too large. The limit is {mb} MB.",
       errNoFile: "Choose or drop a file first.",
       errShortText: "Paste the full text of the CV or application (at least 50 characters).",
+      errTypeCode: "Unsupported file: {name}. Use source code files, such as .py, .js, .ts, .java or .go.",
+      errTooManyFiles: "Choose at most {files} files.",
+      errShortCode: "Paste at least 50 characters of code.",
       err401: "Reviews are not available on this page right now.",
       err403: "This page is not allowed to use the API.",
       err413: "The document is too large.",
@@ -57,22 +73,28 @@
       hours: "{n} hours",
     },
     fi: {
-      pageTitle: "CV- ja hakemusarvio",
+      pageTitle: "CV-, hakemus- ja koodiarvio",
       navDocs: "API-dokumentaatio",
-      title: "CV- ja hakemusarvio",
-      lead: "Lataa CV tai työhakemus tai liitä sen teksti. Tekoäly arvioi sen asteikolla 0–5 tähteä ja kertoo vahvuudet ja kehityskohteet.",
+      title: "CV-, hakemus- ja koodiarvio",
+      lead: "Lataa CV, työhakemus tai lähdekoodia tai liitä sen teksti. Tekoäly arvioi sen asteikolla 0–5 tähteä, kertoo vahvuudet ja kehityskohteet ja ehdottaa muutoksia koodiin.",
       tabFile: "Lataa tiedosto",
       tabText: "Liitä teksti",
       dropTitle: "Vedä ja pudota tiedosto tähän",
       dropOr: "tai",
       dropChoose: "valitse tiedosto",
       dropTypes: "PDF, DOC tai DOCX, enintään {mb} Mt",
+      dropTitleCode: "Vedä ja pudota lähdekooditiedostot tähän",
+      dropChooseCode: "valitse tiedostot",
+      dropTypesCode: "Enintään {files} tiedostoa useimmilla ohjelmointikielillä, yhteensä {mb} Mt",
       removeFile: "Poista tiedosto",
       textLabel: "Asiakirjan teksti",
       textPlaceholder: "Liitä CV:n tai hakemuksen teksti tähän…",
+      textLabelCode: "Koodi",
+      textPlaceholderCode: "Liitä koodi tähän…",
       chars: "{count} / {max} merkkiä",
       kindLabel: "Asiakirjan tyyppi",
       kind_cv: "CV (ansioluettelo)",
+      "kind_code-review": "Koodikatselmointi",
       "kind_cover-letter": "Työhakemus",
       reviewLanguage: "Arvio kirjoitetaan {language}.",
       language_fi: "suomeksi",
@@ -85,11 +107,20 @@
       strengths: "Vahvuudet",
       weaknesses: "Kehityskohteet",
       again: "Arvioi toinen",
+      suggestions: "Ehdotetut muutokset",
+      current: "Nykyinen",
+      suggested: "Korvaa tällä",
+      line: "rivi {n}",
+      copy: "Kopioi",
+      copied: "Kopioitu",
       starsLabel: "{count}/5 tähteä",
       errType: "Tiedostotyyppiä ei tueta. Käytä PDF-, DOC- tai DOCX-tiedostoa tai liitä teksti.",
       errSize: "Tiedosto on liian suuri. Enimmäiskoko on {mb} Mt.",
       errNoFile: "Valitse tai pudota ensin tiedosto.",
       errShortText: "Liitä CV:n tai hakemuksen koko teksti (vähintään 50 merkkiä).",
+      errTypeCode: "Tiedostoa ei tueta: {name}. Käytä lähdekooditiedostoja, kuten .py, .js, .ts, .java tai .go.",
+      errTooManyFiles: "Valitse enintään {files} tiedostoa.",
+      errShortCode: "Liitä vähintään 50 merkkiä koodia.",
       err401: "Arviointi ei ole tällä sivulla juuri nyt käytettävissä.",
       err403: "Tällä sivulla ei ole oikeutta käyttää rajapintaa.",
       err413: "Asiakirja on liian suuri.",
@@ -111,7 +142,8 @@
   const panels = { file: $("panel-file"), text: $("panel-text") };
   const dropzone = $("dropzone");
   const fileInput = $("file-input");
-  const fileChip = $("file-chip");
+  const fileList = $("file-list");
+  const chipTemplate = $("file-chip-template");
   const textInput = $("text-input");
   const kindSelect = $("kind");
   const errorBox = $("form-error");
@@ -121,7 +153,7 @@
 
   let lang = "en";
   let mode = "file";
-  let selectedFile = null;
+  let selectedFiles = [];
   let loading = false;
   let lastResult = null;
   let lastError = null; // { key, vars, detail } so it can be re-translated
@@ -155,8 +187,17 @@
     document.querySelectorAll("[data-lang]").forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset.lang === lang));
     });
+    renderKinds();
+    updateCharCount();
+    setLoading(loading);
+    if (lastError) showError(lastError.key, lastError.vars, lastError.detail);
+    if (lastResult) renderResult(lastResult);
+  }
+
+  function translatePage() {
+    const vars = { mb: config.maxUploadMb, files: config.maxCodeFiles };
     document.querySelectorAll("[data-i18n]").forEach((el) => {
-      el.textContent = t(el.dataset.i18n, { mb: config.maxUploadMb });
+      el.textContent = t(el.dataset.i18n, vars);
     });
     document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
       el.placeholder = t(el.dataset.i18nPlaceholder);
@@ -164,12 +205,6 @@
     document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
       el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel));
     });
-
-    renderKinds();
-    updateCharCount();
-    setLoading(loading);
-    if (lastError) showError(lastError.key, lastError.vars, lastError.detail);
-    if (lastResult) renderResult(lastResult);
   }
 
   document.querySelectorAll("[data-lang]").forEach((button) => {
@@ -189,7 +224,10 @@
     }
     rubricsByKind[kind][rubric.language] = rubric;
   }
-  kinds.sort((a, b) => (a === "cv" ? -1 : b === "cv" ? 1 : 0));
+  // CVs first, then applications, then other types such as code review.
+  const KIND_ORDER = ["cv", "cover-letter"];
+  const rank = (kind) => (KIND_ORDER.includes(kind) ? KIND_ORDER.indexOf(kind) : KIND_ORDER.length);
+  kinds.sort((a, b) => rank(a) - rank(b));
 
   function kindLabel(kind) {
     const key = "kind_" + kind;
@@ -203,6 +241,7 @@
     kindSelect.replaceChildren(...kinds.map((kind) => new Option(kindLabel(kind), kind)));
     kindSelect.value = current;
     updateReviewLanguage();
+    updateInputMode();
   }
 
   function selectedRubric() {
@@ -216,7 +255,43 @@
     $("review-language").textContent = rubric ? t("reviewLanguage", { language }) : "";
   }
 
-  kindSelect.addEventListener("change", updateReviewLanguage);
+  kindSelect.addEventListener("change", () => {
+    hideError();
+    updateReviewLanguage();
+    updateInputMode();
+  });
+
+  // ── Documents or code ───────────────────────────────────
+  // Code rubrics take several source files and keep the text's formatting.
+  function isCode() {
+    const rubric = selectedRubric();
+    return Boolean(rubric && rubric.input === "code");
+  }
+
+  function fileAllowed(name) {
+    const base = name.toLowerCase().split("/").pop();
+    const dot = base.lastIndexOf(".");
+    const extension = dot > 0 ? base.slice(dot) : "";
+    if (!isCode()) return DOCUMENT_EXTENSIONS.includes(extension);
+    return config.codeFilenames.includes(base) || config.codeExtensions.includes(extension);
+  }
+
+  function updateInputMode() {
+    const code = isCode();
+    const suffix = code ? "Code" : "";
+    $("drop-title").dataset.i18n = "dropTitle" + suffix;
+    $("drop-choose").dataset.i18n = "dropChoose" + suffix;
+    $("drop-types").dataset.i18n = "dropTypes" + suffix;
+    $("text-label").dataset.i18n = "textLabel" + suffix;
+    textInput.dataset.i18nPlaceholder = "textPlaceholder" + suffix;
+    textInput.classList.toggle("code", code);
+    fileInput.multiple = code;
+    fileInput.accept = (code ? config.codeExtensions : DOCUMENT_EXTENSIONS).join(",");
+    // Keep only files that suit the new document type.
+    selectedFiles = selectedFiles.filter((file) => fileAllowed(file.name)).slice(0, code ? config.maxCodeFiles : 1);
+    renderFiles();
+    translatePage();
+  }
 
   // ── Tabs ────────────────────────────────────────────────
   function selectTab(name, focus) {
@@ -249,32 +324,45 @@
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   }
 
-  function setFile(file) {
+  // Documents replace the chosen file; code files are added to the list.
+  function addFiles(list) {
     hideError();
-    if (!file) return;
-    const name = file.name.toLowerCase();
-    if (!ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext))) {
-      showError("errType");
-      return;
+    const code = isCode();
+    const incoming = Array.from(list || []);
+    if (!incoming.length) return;
+    const files = code ? selectedFiles.slice() : [];
+    for (const file of code ? incoming : incoming.slice(0, 1)) {
+      if (!fileAllowed(file.name)) {
+        return code ? showError("errTypeCode", { name: file.name }) : showError("errType");
+      }
+      if (!files.some((f) => f.name === file.name && f.size === file.size)) files.push(file);
     }
-    if (file.size > config.maxUploadMb * 1024 * 1024) {
-      showError("errSize", { mb: config.maxUploadMb });
-      return;
-    }
-    selectedFile = file;
-    $("file-name").textContent = file.name;
-    $("file-size").textContent = formatSize(file.size);
-    fileChip.hidden = false;
+    if (files.length > config.maxCodeFiles) return showError("errTooManyFiles", { files: config.maxCodeFiles });
+    const total = files.reduce((sum, file) => sum + file.size, 0);
+    if (total > config.maxUploadMb * 1024 * 1024) return showError("errSize", { mb: config.maxUploadMb });
+    selectedFiles = files;
+    renderFiles();
   }
 
-  function clearFile() {
-    selectedFile = null;
+  function renderFiles() {
+    const chips = selectedFiles.map((file, index) => {
+      const chip = chipTemplate.content.firstElementChild.cloneNode(true);
+      chip.querySelector(".name").textContent = file.name;
+      chip.querySelector(".size").textContent = formatSize(file.size);
+      const remove = chip.querySelector(".remove");
+      remove.setAttribute("aria-label", t("removeFile") + ": " + file.name);
+      remove.addEventListener("click", () => {
+        selectedFiles.splice(index, 1);
+        renderFiles();
+      });
+      return chip;
+    });
+    fileList.replaceChildren(...chips);
+    fileList.hidden = !chips.length;
     fileInput.value = "";
-    fileChip.hidden = true;
   }
 
-  fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
-  $("file-clear").addEventListener("click", clearFile);
+  fileInput.addEventListener("change", () => addFiles(fileInput.files));
 
   ["dragenter", "dragover"].forEach((type) =>
     dropzone.addEventListener(type, (event) => {
@@ -287,8 +375,7 @@
   );
   dropzone.addEventListener("drop", (event) => {
     event.preventDefault();
-    const file = event.dataTransfer && event.dataTransfer.files[0];
-    if (file) setFile(file);
+    if (event.dataTransfer) addFiles(event.dataTransfer.files);
   });
   // A file dropped next to the drop zone should not open in the browser.
   window.addEventListener("dragover", (event) => event.preventDefault());
@@ -376,13 +463,14 @@
     const data = new FormData();
     data.append("rubric", rubric ? rubric.id : "");
     if (mode === "file") {
-      if (!selectedFile) return showError("errNoFile");
-      data.append("file", selectedFile, selectedFile.name);
+      if (!selectedFiles.length) return showError("errNoFile");
+      for (const file of selectedFiles) data.append("file", file, file.name);
     } else {
-      const text = textInput.value.trim();
-      if (text.length < 50) {
+      // Code keeps its indentation; the server trims it without losing the layout.
+      const text = isCode() ? textInput.value : textInput.value.trim();
+      if (text.trim().length < 50) {
         textInput.focus();
-        return showError("errShortText");
+        return showError(isCode() ? "errShortCode" : "errShortText");
       }
       data.append("text", text);
     }
@@ -439,6 +527,58 @@
     }
   }
 
+  function codeBlock(kind, code) {
+    const figure = document.createElement("figure");
+    figure.className = "code-block " + kind;
+    const caption = document.createElement("figcaption");
+    const label = document.createElement("span");
+    label.textContent = t(kind === "added" ? "suggested" : "current");
+    caption.append(label);
+    if (kind === "added" && navigator.clipboard) {
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "copy";
+      copy.textContent = t("copy");
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(code);
+          copy.textContent = t("copied");
+          setTimeout(() => { copy.textContent = t("copy"); }, 1500);
+        } catch (error) { /* clipboard not allowed */ }
+      });
+      caption.append(copy);
+    }
+    const pre = document.createElement("pre");
+    const codeElement = document.createElement("code");
+    codeElement.textContent = code;
+    pre.append(codeElement);
+    figure.append(caption, pre);
+    return figure;
+  }
+
+  function renderSuggestions(items) {
+    const list = $("suggestion-list");
+    list.replaceChildren();
+    for (const item of items || []) {
+      const li = document.createElement("li");
+      li.className = "suggestion";
+      const head = document.createElement("p");
+      head.className = "suggestion-head";
+      const where = [item.file, item.line ? t("line", { n: item.line }) : ""].filter(Boolean).join(" · ");
+      if (where) {
+        const location = document.createElement("code");
+        location.textContent = where;
+        head.append(location, " ");
+      }
+      head.append(item.issue);
+      li.append(head);
+      if (item.original) li.append(codeBlock("removed", item.original));
+      li.append(codeBlock("added", item.replacement));
+      list.append(li);
+    }
+    $("suggestions").hidden = !list.children.length;
+  }
+
   function renderResult(data) {
     const stars = Math.max(0, Math.min(5, Number(data.stars) || 0));
     renderStars(stars);
@@ -457,6 +597,7 @@
     $("summary").textContent = data.summary || "—";
     fillList("strengths", data.strengths);
     fillList("weaknesses", data.weaknesses);
+    renderSuggestions(data.suggestions);
   }
 
   $("again").addEventListener("click", () => {

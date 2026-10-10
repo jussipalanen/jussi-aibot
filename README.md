@@ -1,15 +1,25 @@
 # Jussi AI Bot
 
-A configurable AI agent platform built with FastAPI. It runs **chat agents** that call your APIs and rank results with RAG, and **document reviews** (CVs, cover letters) against rubrics — all defined in YAML, so a new platform needs a config file instead of new code.
+[![PR Checks](https://github.com/jussipalanen/jussi-aibot/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/jussipalanen/jussi-aibot/actions/workflows/pr-checks.yml)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.137-009688?logo=fastapi&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
+![Security](https://img.shields.io/badge/security-bandit%20%7C%20pip--audit%20%7C%20trivy-success)
+[![Deploy to Render](https://img.shields.io/badge/Deploy%20to-Render-46E3B7?logo=render&logoColor=white)](https://render.com/deploy?repo=https://github.com/jussipalanen/jussi-aibot)
+
+A configurable AI agent platform built with FastAPI. It runs **chat agents** that call your APIs and rank results with RAG, **document reviews** (CVs, cover letters) and **code reviews** against rubrics — all defined in YAML, so a new platform needs a config file instead of new code.
 
 - 🤖 **Agents from config** — prompt, model, tools, auth and RAG in `config/agents/*.yaml`
 - 🛠️ **Native tool calling** — the model calls your REST endpoints directly
 - 🔎 **RAG** — search results ranked by meaning with embeddings
 - 📝 **Document reviews** — 0–5 stars, summary, strengths and weaknesses, per rubric and language
+- 🧑‍💻 **Code reviews** — source code in most programming languages, several files at once, with suggested code changes (current code → replacement)
 - 🧠 **Many AI providers** — Gemini (API key or Vertex AI), Puter, OpenAI, Groq, OpenRouter, Mistral, Ollama
 - 🔐 **Per-client API keys** — each client gets its own agents, origins and rate limit
 - 📄 **PDF, DOC and DOCX** uploads, or plain text
-- 🌐 **Review demo** — a browser form in Finnish and English at `/demo/review`
+- 🌐 **Review demo** — a browser form in Finnish and English at `/demo/review`, for CVs, applications and code
 
 ## API documentation
 
@@ -18,7 +28,7 @@ The API documents itself. Open the root URL for a home page with links, or go st
 | | Local | Production (Cloud Run) |
 |---|---|---|
 | Home page | [`localhost:8080/`](http://localhost:8080/) | [`/`](https://jussi-aibot-production-61766311353.europe-north1.run.app/) |
-| **Review demo** (CV & application review) | [`localhost:8080/demo/review`](http://localhost:8080/demo/review) | [`/demo/review`](https://jussi-aibot-production-61766311353.europe-north1.run.app/demo/review) |
+| **Review demo** (CV, application & code review) | [`localhost:8080/demo/review`](http://localhost:8080/demo/review) | [`/demo/review`](https://jussi-aibot-production-61766311353.europe-north1.run.app/demo/review) |
 | **Swagger UI** (try requests in the browser) | [`localhost:8080/docs`](http://localhost:8080/docs) | [`/docs`](https://jussi-aibot-production-61766311353.europe-north1.run.app/docs) |
 | ReDoc (readable reference) | [`localhost:8080/redoc`](http://localhost:8080/redoc) | [`/redoc`](https://jussi-aibot-production-61766311353.europe-north1.run.app/redoc) |
 | OpenAPI JSON | [`localhost:8080/openapi.json`](http://localhost:8080/openapi.json) | [`/openapi.json`](https://jussi-aibot-production-61766311353.europe-north1.run.app/openapi.json) |
@@ -126,6 +136,58 @@ curl -X POST http://localhost:8080/v1/review \
 ```
 
 Optional form fields: `provider` (defaults to `REVIEW_PROVIDER`) and `model`.
+
+### Code review
+
+![Python](https://img.shields.io/badge/-Python-3776AB?logo=python&logoColor=white)
+![JavaScript](https://img.shields.io/badge/-JavaScript-F7DF1E?logo=javascript&logoColor=black)
+![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?logo=typescript&logoColor=white)
+![Java](https://img.shields.io/badge/-Java-ED8B00?logo=openjdk&logoColor=white)
+![Kotlin](https://img.shields.io/badge/-Kotlin-7F52FF?logo=kotlin&logoColor=white)
+![C#](https://img.shields.io/badge/-C%23-512BD4?logo=dotnet&logoColor=white)
+![C++](https://img.shields.io/badge/-C%2B%2B-00599C?logo=cplusplus&logoColor=white)
+![Go](https://img.shields.io/badge/-Go-00ADD8?logo=go&logoColor=white)
+![Rust](https://img.shields.io/badge/-Rust-000000?logo=rust&logoColor=white)
+![PHP](https://img.shields.io/badge/-PHP-777BB4?logo=php&logoColor=white)
+![Ruby](https://img.shields.io/badge/-Ruby-CC342D?logo=ruby&logoColor=white)
+![Swift](https://img.shields.io/badge/-Swift-F05138?logo=swift&logoColor=white)
+![SQL](https://img.shields.io/badge/-SQL-4479A1?logo=postgresql&logoColor=white)
+![Shell](https://img.shields.io/badge/-Shell-4EAA25?logo=gnubash&logoColor=white)
+![and more](https://img.shields.io/badge/-and%20more-lightgrey)
+
+Use the `code-review-en` or `code-review-fi` rubric. Send up to 20 source files (repeat `file`) or paste the code in `text`; the AI detects the language. Line breaks and indentation are kept, and lines are numbered so findings point to them.
+
+```bash
+curl -X POST http://localhost:8080/v1/review \
+  -H "Authorization: Bearer $API_KEY" \
+  -F "rubric=code-review-en" \
+  -F "file=@app/db.py" \
+  -F "file=@app/routes.py"
+```
+
+The result has the usual fields plus `suggestions`: what to replace and what to use instead.
+
+```json
+{
+  "rubric": "code-review-en",
+  "stars": 3,
+  "rating_text": "Good",
+  "summary": "A small Flask API in Python. Clear structure, but one query is open to SQL injection...",
+  "strengths": ["Small, focused functions", "Consistent naming"],
+  "weaknesses": ["db.py line 14: SQL built from user input", "routes.py line 8: errors are swallowed"],
+  "suggestions": [
+    {
+      "file": "db.py",
+      "line": 14,
+      "issue": "The query is built from user input, which allows SQL injection. Use a parameter.",
+      "original": "cur.execute(f\"SELECT * FROM users WHERE name = '{name}'\")",
+      "replacement": "cur.execute(\"SELECT * FROM users WHERE name = %s\", (name,))"
+    }
+  ]
+}
+```
+
+Accepted files: `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.java`, `.kt`, `.scala`, `.go`, `.rs`, `.c`, `.h`, `.cpp`, `.hpp`, `.cs`, `.php`, `.rb`, `.swift`, `.dart`, `.lua`, `.r`, `.sql`, `.sh`, `.ps1`, `.html`, `.css`, `.scss`, `.json`, `.yaml`, `.toml`, `.xml`, `.tf`, `Dockerfile`, `Makefile` and more (see `CODE_EXTENSIONS` in `aibot/review/extract.py`). Files must be UTF-8 text. Up to 60 000 characters are reviewed per request.
 
 ### Errors
 
@@ -235,17 +297,21 @@ Each file in `config/rubrics/` is a rubric:
 | `cv-en` | English | CVs |
 | `cover-letter-fi` | Finnish | Job applications |
 | `cover-letter-en` | English | Job applications |
+| `code-review-fi` | Finnish | Source code, with suggested changes |
+| `code-review-en` | English | Source code, with suggested changes |
 
 Add your own by copying one: set `id`, `language`, six `labels` (for 0–5 stars) and a `prompt` that contains `{document_text}` and asks for JSON with `stars`, `summary`, `strengths` and `weaknesses`. Name it `<type>-<language>` (e.g. `portfolio-fi`) so the demo page groups the language versions under one document type.
+
+Set `input: code` for source code: the rubric then takes up to 20 source files instead of one document, keeps line breaks and indentation, numbers the lines (restarting for each `==> file <==`), and returns any `suggestions` the prompt asks for (`file`, `line`, `issue`, `original`, `replacement`). For example, a rubric that checks only security could copy `code-review-en.yaml` with a narrower prompt.
 
 ### Review demo (`/demo/review`)
 
 A browser page for trying reviews, linked from the home page:
 
-- Drag and drop a PDF, DOC or DOCX file, or paste the text
-- Choose the document type: CV or job application
+- Choose the document type: CV, job application or code review
+- Drag and drop a PDF, DOC or DOCX file, or paste the text. For code review, drop several source files or paste code in a monospace box.
 - **Suomi / English** switch for the page and the review language. The default comes from `?lang=fi` or `?lang=en`, the visitor's last choice, or the browser language.
-- Shows the stars, rating, summary, strengths and areas to improve
+- Shows the stars, rating, summary, strengths and areas to improve. Code reviews also show suggested changes: the current code and its replacement, with a **Copy** button.
 
 Who can use it:
 
@@ -532,6 +598,7 @@ pytest tests/test_engine.py -v          # one file
 |---|---|
 | `tests/test_api.py` | Home page, health, legacy `/ai/chat` and `/ai/review` |
 | `tests/test_demo.py` | Review demo page, plain-text reviews, demo access rules |
+| `tests/test_code_review.py` | Code reviews: source files, several files, line numbers, suggestions |
 | `tests/test_v1.py` | `/v1` endpoints, rubrics, shipped config files |
 | `tests/test_engine.py` | Agent loop, HTTP tools, pagination, login refresh, RAG, context sources |
 | `tests/test_providers.py` | Gemini and OpenAI-compatible message conversion |
@@ -570,7 +637,7 @@ aibot/
   tools/http.py            Configurable HTTP tools and auth sessions
   knowledge/               RAG ranking, context sources, JSON-to-text rendering
   llm/                     Providers: gemini, openai_compat, puter, local
-  review/                  Text extraction, rubrics, legacy Finnish review
+  review/                  Text and code extraction, rubrics, legacy Finnish review
 config/
   agents/*.yaml            Agent definitions
   rubrics/*.yaml           Review rubrics

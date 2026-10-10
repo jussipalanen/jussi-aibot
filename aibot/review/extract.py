@@ -12,6 +12,19 @@ from docx import Document
 
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docs", ".docx"}
 
+# Source files accepted by rubrics with `input: code`.
+CODE_EXTENSIONS = frozenset({
+    ".py", ".pyi", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte",
+    ".java", ".kt", ".kts", ".scala", ".groovy", ".gradle", ".go", ".rs", ".c", ".h",
+    ".cpp", ".cc", ".cxx", ".hpp", ".cs", ".fs", ".vb", ".php", ".rb", ".swift", ".m",
+    ".dart", ".lua", ".pl", ".r", ".jl", ".ex", ".exs", ".erl", ".hs", ".clj", ".ml",
+    ".zig", ".sol", ".sql", ".sh", ".bash", ".zsh", ".ps1", ".bat", ".html", ".css",
+    ".scss", ".less", ".json", ".yaml", ".yml", ".toml", ".xml", ".tf",
+})
+CODE_FILENAMES = frozenset({"dockerfile", "makefile", "jenkinsfile"})
+# Starts each file when several are reviewed together; line numbers restart after it.
+FILE_HEADER = re.compile(r"^==> (.+) <==$")
+
 
 class UnsupportedDocument(ValueError):
     """The file type is not supported or its text could not be read."""
@@ -20,6 +33,37 @@ class UnsupportedDocument(ValueError):
 def normalize_whitespace(text: str) -> str:
     """Normalize whitespace for stable prompts and cache keys."""
     return re.sub(r"\s+", " ", text).strip()
+
+
+def normalize_code(text: str) -> str:
+    """Keep line breaks and indentation; drop trailing spaces and blank lines at the edges."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    return "\n".join(line.rstrip() for line in lines).strip("\n")
+
+
+def clean_filename(filename: str) -> str:
+    """A file name (or relative path) safe to put in a file header."""
+    return re.sub(r"[\x00-\x1f<>]", "", filename).strip()[:200]
+
+
+def file_header(filename: str) -> str:
+    return f"==> {filename} <=="
+
+
+def is_code_file(filename: str) -> bool:
+    """True for source files a code rubric accepts."""
+    name = os.path.basename(filename.lower())
+    return name in CODE_FILENAMES or os.path.splitext(name)[1] in CODE_EXTENSIONS
+
+
+def extract_code_text(file_bytes: bytes) -> str:
+    """Read a source file as UTF-8 text."""
+    if b"\x00" in file_bytes:
+        raise UnsupportedDocument("The file is not a text file.")
+    try:
+        return file_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise UnsupportedDocument("Could not read the file as UTF-8 text.") from exc
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Code review for source code in most programming languages: `code-review-en` and `code-review-fi` rubrics
+- `input: code` rubric option: takes up to 20 source files at once, keeps line breaks and indentation, and numbers the lines per file
+- `suggestions` in `POST /v1/review` results: the file, line, issue, current code and its replacement
+- Code review in the demo page: several source files, a monospace text box, and suggested changes with a **Copy** button
+- Badges in the README
+
+### Changed
+
+- The review demo has no API key field and does not show the AI provider; server error details are hidden on the page
+- `POST /v1/review` accepts the `file` field more than once (code rubrics only)
+
+---
+
 ## [2.0.0] - 2026-10-08
 
 The service is now a configurable platform: agents, tools, RAG and review rubrics are defined in YAML instead of Python. The `/ai/chat` and `/ai/review` endpoints keep their requests and responses.

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>CV &amp; application review · {{name}}</title>
+<title>CV, application &amp; code review · {{name}}</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -24,10 +24,16 @@
 </header>
 
 <main class="container">
-  <h1 data-i18n="title">CV &amp; application review</h1>
-  <p class="lead" data-i18n="lead">Upload a CV or job application, or paste its text. The AI rates it from 0 to 5 stars and lists its strengths and what to improve.</p>
+  <h1 data-i18n="title">CV, application &amp; code review</h1>
+  <p class="lead" data-i18n="lead">Upload a CV, job application or source code, or paste its text. The AI rates it from 0 to 5 stars, lists its strengths and what to improve, and suggests code changes.</p>
 
   <form id="review-form" class="card" novalidate>
+    <div class="field first">
+      <label for="kind" data-i18n="kindLabel">Document type</label>
+      <select id="kind"></select>
+      <p class="hint" id="review-language"></p>
+    </div>
+
     <div class="tabs" role="tablist">
       <button type="button" class="tab" role="tab" id="tab-file" aria-selected="true" aria-controls="panel-file" data-i18n="tabFile">Upload file</button>
       <button type="button" class="tab" role="tab" id="tab-text" aria-selected="false" aria-controls="panel-text" tabindex="-1" data-i18n="tabText">Paste text</button>
@@ -39,29 +45,26 @@
         <svg class="icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
         </svg>
-        <span class="title" data-i18n="dropTitle">Drag and drop a file here</span>
-        <span class="hint"><span data-i18n="dropOr">or</span> <u data-i18n="dropChoose">choose a file</u> · <span data-i18n="dropTypes">PDF, DOC or DOCX, up to {mb} MB</span></span>
+        <span class="title" id="drop-title" data-i18n="dropTitle">Drag and drop a file here</span>
+        <span class="hint"><span data-i18n="dropOr">or</span> <u id="drop-choose" data-i18n="dropChoose">choose a file</u> · <span id="drop-types" data-i18n="dropTypes">PDF, DOC or DOCX, up to {mb} MB</span></span>
       </label>
-      <div class="file-chip" id="file-chip" hidden>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
-        </svg>
-        <span class="name" id="file-name"></span>
-        <span class="size" id="file-size"></span>
-        <button type="button" id="file-clear" data-i18n-aria-label="removeFile" aria-label="Remove file">&times;</button>
-      </div>
+      <ul class="file-list" id="file-list" hidden></ul>
+      <template id="file-chip-template">
+        <li class="file-chip">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
+          </svg>
+          <span class="name"></span>
+          <span class="size"></span>
+          <button type="button" class="remove">&times;</button>
+        </li>
+      </template>
     </div>
 
     <div id="panel-text" role="tabpanel" aria-labelledby="tab-text" hidden>
-      <label class="field-label" for="text-input" data-i18n="textLabel">Document text</label>
-      <textarea id="text-input" maxlength="{{max_chars}}" data-i18n-placeholder="textPlaceholder" placeholder="Paste the CV or application text here…"></textarea>
+      <label class="field-label" for="text-input" id="text-label" data-i18n="textLabel">Document text</label>
+      <textarea id="text-input" maxlength="{{max_chars}}" spellcheck="false" data-i18n-placeholder="textPlaceholder" placeholder="Paste the CV or application text here…"></textarea>
       <p class="hint counter" id="char-count"></p>
-    </div>
-
-    <div class="field">
-      <label for="kind" data-i18n="kindLabel">Document type</label>
-      <select id="kind"></select>
-      <p class="hint" id="review-language"></p>
     </div>
 
     <p class="error" id="form-error" role="alert" hidden></p>
@@ -93,6 +96,10 @@
         <ul id="weaknesses"></ul>
       </div>
     </div>
+    <section class="suggestions" id="suggestions" hidden>
+      <h2 data-i18n="suggestions">Suggested changes</h2>
+      <ol id="suggestion-list"></ol>
+    </section>
     <button type="button" class="button" id="again" data-i18n="again">Review another</button>
   </section>
 </main>

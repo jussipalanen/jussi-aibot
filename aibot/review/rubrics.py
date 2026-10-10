@@ -1,6 +1,7 @@
 """
 Review rubrics from `config/rubrics/*.yaml` and the generic review flow.
 """
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -9,8 +10,30 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from aibot.configfile import load_yaml_dir
 from aibot.llm import LLMProvider, Message, ProviderError
 from aibot.review import cv_fi
+from aibot.review.extract import FILE_HEADER
 
 DOCUMENT_PLACEHOLDER = "{document_text}"
+MAX_SUGGESTIONS = 10
+_LINE_PREFIX = re.compile(r"^ *\d+ \| ?", re.MULTILINE)
+
+
+def number_lines(code: str) -> str:
+    """Prefix each line with its number, e.g. ` 7 | return x`, so reviews can point to lines.
+
+    Numbering restarts after each `==> name <==` file header.
+    """
+    lines = code.split("\n")
+    width = len(str(len(lines)))
+    numbered = []
+    number = 0
+    for line in lines:
+        if FILE_HEADER.match(line):
+            numbered.append(line)
+            number = 0
+        else:
+            number += 1
+            numbered.append(f"{number:>{width}} | {line}")
+    return "\n".join(numbered)
 
 
 class Rubric(BaseModel):
@@ -25,6 +48,8 @@ class Rubric(BaseModel):
     labels: list[str] = Field(min_length=6, max_length=6)
     prompt: str
     max_chars: int = Field(6000, ge=0)
+    # "code": source files are accepted, formatting is kept and lines are numbered.
+    input: Literal["document", "code"] = "document"
     heuristics: Literal["cv_fi"] | None = None
 
     @field_validator("prompt")
@@ -37,6 +62,8 @@ class Rubric(BaseModel):
     def build_prompt(self, document_text: str) -> str:
         """Insert the (possibly truncated) document text into the prompt."""
         text = document_text[:self.max_chars] if self.max_chars else document_text
+        if self.input == "code":
+            text = number_lines(text)
         return self.prompt.replace(DOCUMENT_PLACEHOLDER, text)
 
 
@@ -58,6 +85,37 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _snippet(value: object) -> str:
+    """Code from a suggestion, without the line numbers the model may have copied."""
+    return _LINE_PREFIX.sub("", str(value or "")).strip("\n")
+
+
+def _suggestions(value: object) -> list[dict]:
+    """Code changes the model proposes: what is wrong, the current code and its replacement."""
+    if not isinstance(value, list):
+        return []
+    result = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        replacement = _snippet(item.get("replacement"))
+        issue = str(item.get("issue") or "").strip()
+        if not replacement or not issue:
+            continue
+        try:
+            line = int(item["line"]) if item.get("line") is not None else None
+        except (TypeError, ValueError):
+            line = None
+        result.append({
+            "file": str(item.get("file") or "").strip() or None,
+            "line": line if line and line > 0 else None,
+            "issue": issue,
+            "original": _snippet(item.get("original")),
+            "replacement": replacement,
+        })
+    return result[:MAX_SUGGESTIONS]
 
 
 async def review_document(
@@ -101,4 +159,5 @@ async def review_document(
         "summary": summary,
         "strengths": strengths,
         "weaknesses": weaknesses,
+        "suggestions": _suggestions(parsed.get("suggestions")),
     }

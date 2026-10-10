@@ -12,7 +12,8 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from aibot import __version__
-from aibot.api.deps import MAX_TEXT_CHARS, services
+from aibot.api.deps import MAX_CODE_FILES, MAX_TEXT_CHARS, services
+from aibot.review.extract import CODE_EXTENSIONS, CODE_FILENAMES
 
 router = APIRouter(tags=["Service"])
 
@@ -25,7 +26,7 @@ _DEMO_LINKS = """<section>
       <svg class="icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m12 11.5 1.1 2.2 2.4.3-1.8 1.7.5 2.4-2.2-1.2-2.2 1.2.5-2.4-1.8-1.7 2.4-.3z"/>
       </svg>
-      <div><strong>CV &amp; application review</strong><span>Upload a CV or job application and get a 0–5 star review.</span></div>
+      <div><strong>CV, application &amp; code review</strong><span>Upload a CV, job application or source code and get a 0–5 star review.</span></div>
       <span class="arrow" aria-hidden="true">&rarr;</span>
     </a>
   </section>"""
@@ -77,8 +78,11 @@ async def review_demo(request: Request) -> Response:
         "appName": settings.app_name,
         "maxUploadMb": max_mb,
         "maxTextChars": MAX_TEXT_CHARS,
+        "maxCodeFiles": MAX_CODE_FILES,
+        "codeExtensions": sorted(CODE_EXTENSIONS),
+        "codeFilenames": sorted(CODE_FILENAMES),
         "rubrics": [
-            {"id": r.id, "name": r.name, "language": r.language}
+            {"id": r.id, "name": r.name, "language": r.language, "input": r.input}
             for r in sorted(svc.rubrics.values(), key=lambda r: r.id)
         ],
     }).replace("<", "\\u003c")
