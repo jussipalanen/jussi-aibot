@@ -19,17 +19,23 @@ Google Cloud Run deployment with automatic deploys from GitHub, because the Rend
 - Always-on scaling at low cost: one instance (`--min-instances=1 --max-instances=1`), CPU only during requests, 1 vCPU, 512 MiB
 - `./dev deploy`: deploy the working copy by hand, as the workflow does; it and `cloud-env apply` stop first when a secret is missing, so no failed revision is created
 - `./dev cloud-env list|values|apply|set|unset|secret|secrets`: show the variables (`values`, or `list --values`, also shows the secret values), apply `cloud-run.env.yaml` without rebuilding, change single variables, and store secrets without showing them
+- `DISABLED_AGENTS`: agent ids to turn off. They are not listed and their chat endpoints answer 404 (legacy `/ai/chat` 400); an unknown id stops the app at startup
 
 ### Changed
 
 - `FORWARDED_IP_DEPTH=1` on Cloud Run, so rate limits count per visitor
-- All chatbots and reviews use `gemini-2.5-flash-lite` through the AI Studio key (`gemini` provider), so they run on its free tier; the Jussimatic CV chat used `gemini-2.5-flash`, and `DEFAULT_PROVIDER` is `gemini` instead of its alias `vertex_ai`
+- On Cloud Run the JussiSpace and Jussimatic CV agents are off (`DISABLED_AGENTS`) and their variables are removed; `ALLOWED_ORIGINS` is the demo domain instead of the JussiSpace frontend, so the API is not open to everyone
+- All chatbots and reviews use one flash-lite model through the AI Studio key (`gemini` provider), so they run on its free tier; the Jussimatic CV chat used `gemini-2.5-flash`, and `DEFAULT_PROVIDER` is `gemini` instead of its alias `vertex_ai`
 - PR checks no longer run on their own for pushes to `main`; the deploy workflow runs them first
 - `dev` runs with bash
 
 ### Removed
 
 - `cloudbuild.yaml`, `./dev set-env` and `./dev create-secrets` (the old `jussi-aibot-production` service and `JUSSI_AIBOT_` secrets)
+
+### Fixed
+
+- Reviews and chatbots failed on new AI Studio keys ("Tekoälypalvelu ei saanut arviota valmiiksi"): Google no longer offers `gemini-2.5-flash-lite` to new users. The default model and the Cloud Run setting are now `gemini-3.5-flash-lite`
 
 ---
 

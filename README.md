@@ -248,7 +248,7 @@ id: shop-helper
 name: Shop helper
 description: Answers product questions.
 provider: gemini                 # gemini, groq, openai, openrouter, mistral, ollama, ...
-model: gemini-2.5-flash-lite     # empty = provider default
+model: gemini-3.5-flash-lite     # empty = provider default
 
 language_instructions:
   fi: Vastaa aina suomeksi.
@@ -394,7 +394,7 @@ If both are set, the API key is used.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GEMINI_MODEL` | `VERTEX_MODEL` or `gemini-2.5-flash-lite` | Default model for reviews |
+| `GEMINI_MODEL` | `VERTEX_MODEL` or `gemini-3.5-flash-lite` | Default model for reviews |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | Embeddings for RAG |
 | `GEMINI_EMBED_BATCH_SIZE` | 100 (API key), 1 (Vertex AI) | Texts per embedding request |
 
@@ -606,8 +606,9 @@ See `.env.example` for a commented template.
 | `CONFIG_DIR` | `./config` | Folder with `agents/` and `rubrics/` |
 | `GEMINI_API_KEY` | — | Gemini API key |
 | `GCP_PROJECT`, `GCP_LOCATION` | —, `europe-north1` | Vertex AI (when no API key) |
+| `DISABLED_AGENTS` | — | Agent ids to turn off, comma-separated; their chat endpoints answer 404 |
 | `AGENT_PROVIDER` | `gemini` | Default provider for the shipped agents |
-| `AGENT_VERTEX_MODEL` | `gemini-2.5-flash-lite` | Default model for the shipped agents |
+| `AGENT_VERTEX_MODEL` | `gemini-3.5-flash-lite` | Default model for the shipped agents |
 | `JUSSISPACE_VERTEX_MODEL`, `JUSSIMATIC_CV_VERTEX_MODEL` | — | Per-agent model overrides |
 | `JUSSISPACE_API_URL`, `JUSSISPACE_FRONTEND_URL` | JussiSpace URLs | JussiSpace backend and links in answers |
 | `AGENT_EMAIL`, `AGENT_PASSWORD` | — | JussiSpace agent login |

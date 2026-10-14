@@ -42,6 +42,7 @@ class Settings:
     app_name: str
     app_description: str
     config_dir: Path
+    disabled_agents: tuple[str, ...]
     clients_file: Path | None
     default_rate_limit: str
     forwarded_ip_depth: int
@@ -84,6 +85,7 @@ class Settings:
                 "and document reviews, behind one API.",
             ),
             config_dir=config_dir,
+            disabled_agents=tuple(env_list("DISABLED_AGENTS")),
             clients_file=clients_file,
             default_rate_limit=env("DAILY_RATE_LIMIT", "50/day"),
             forwarded_ip_depth=env_int("FORWARDED_IP_DEPTH", 0),

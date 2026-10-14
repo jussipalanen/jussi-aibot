@@ -4,7 +4,7 @@ id: jussispace
 name: JussiSpace assistant
 description: Searches rental properties and checks order status in JussiSpace.
 provider: ${JUSSISPACE_PROVIDER:-${AGENT_PROVIDER:-gemini}}
-model: ${JUSSISPACE_VERTEX_MODEL:-${AGENT_VERTEX_MODEL:-gemini-2.5-flash-lite}}
+model: ${JUSSISPACE_VERTEX_MODEL:-${AGENT_VERTEX_MODEL:-gemini-3.5-flash-lite}}
 
 language_instructions:
   fi: Vastaa aina suomeksi.
