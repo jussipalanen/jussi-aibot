@@ -606,6 +606,7 @@ See `.env.example` for a commented template.
 | `CONFIG_DIR` | `./config` | Folder with `agents/` and `rubrics/` |
 | `GEMINI_API_KEY` | — | Gemini API key |
 | `GCP_PROJECT`, `GCP_LOCATION` | —, `europe-north1` | Vertex AI (when no API key) |
+| `DISABLED_AGENTS` | — | Agent ids to turn off, comma-separated; their chat endpoints answer 404 |
 | `AGENT_PROVIDER` | `gemini` | Default provider for the shipped agents |
 | `AGENT_VERTEX_MODEL` | `gemini-3.5-flash-lite` | Default model for the shipped agents |
 | `JUSSISPACE_VERTEX_MODEL`, `JUSSIMATIC_CV_VERTEX_MODEL` | — | Per-agent model overrides |

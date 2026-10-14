@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from aibot import __version__
-from aibot.agents.registry import AgentRegistry
+from aibot.agents.registry import AgentRegistry, ConfigError
 from aibot.api import legacy, pages, v1
 from aibot.api.pages import WEB_DIR
 from aibot.api.deps import Services
@@ -60,7 +60,12 @@ def create_app(settings: Settings | None = None, providers: ProviderRegistry | N
     settings = settings or Settings.from_env()
     providers = providers or ProviderRegistry()
     http = _HttpClient()
-    agents = AgentRegistry(AgentRegistry.load_configs(settings.config_dir / "agents"), providers, http)
+    configs = AgentRegistry.load_configs(settings.config_dir / "agents")
+    unknown = set(settings.disabled_agents) - {c.id for c in configs}
+    if unknown:
+        raise ConfigError(f"DISABLED_AGENTS names unknown agents: {', '.join(sorted(unknown))}.")
+    # Disabled agents are left out, so their endpoints answer 404 as for any unknown agent.
+    agents = AgentRegistry([c for c in configs if c.id not in settings.disabled_agents], providers, http)
     clients = ClientRegistry.from_settings(settings)
 
     @asynccontextmanager

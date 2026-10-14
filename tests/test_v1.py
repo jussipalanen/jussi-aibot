@@ -50,6 +50,19 @@ def test_cv_agent_without_url_returns_503(make_app: Callable[..., FastAPI], monk
     assert "no URL" in response.json()["detail"]
 
 
+def test_disabled_agents(make_app: Callable[..., FastAPI]) -> None:
+    app = make_app(env={"DISABLED_AGENTS": "jussispace, jussimatic-ai-cv-chat"}, providers={"gemini": FakeProvider()})
+    client = TestClient(app)
+    assert client.get("/v1/agents").json() == []
+    assert client.post("/v1/agents/jussispace/chat", json={"message": "hi"}).status_code == 404
+    assert client.post("/ai/chat", json={"handler": "jussimatic-ai-cv-chat", "message": "hi"}).status_code == 400
+
+
+def test_disabled_agents_must_exist(make_app: Callable[..., FastAPI]) -> None:
+    with pytest.raises(ValueError, match="nope"):
+        make_app(env={"DISABLED_AGENTS": "nope"})
+
+
 def test_list_rubrics(client: TestClient) -> None:
     rubrics = {r["id"]: r for r in client.get("/v1/review/rubrics").json()}
     assert {"cv-fi", "cv-en", "cover-letter-en"} <= rubrics.keys()
