@@ -25,9 +25,9 @@ services:
       - key: DISABLE_LOCAL_MODEL
         value: "true"
       - key: AGENT_VERTEX_MODEL
-        value: gemini-2.5-flash-lite
+        value: gemini-3.5-flash-lite
       - key: JUSSIMATIC_CV_VERTEX_MODEL
-        value: gemini-2.5-flash-lite
+        value: gemini-3.5-flash-lite
 
       # ── Agents ──────────────────────────────────────────────────────────
       - key: JUSSISPACE_API_URL

@@ -23,13 +23,17 @@ Google Cloud Run deployment with automatic deploys from GitHub, because the Rend
 ### Changed
 
 - `FORWARDED_IP_DEPTH=1` on Cloud Run, so rate limits count per visitor
-- All chatbots and reviews use `gemini-2.5-flash-lite` through the AI Studio key (`gemini` provider), so they run on its free tier; the Jussimatic CV chat used `gemini-2.5-flash`, and `DEFAULT_PROVIDER` is `gemini` instead of its alias `vertex_ai`
+- All chatbots and reviews use one flash-lite model through the AI Studio key (`gemini` provider), so they run on its free tier; the Jussimatic CV chat used `gemini-2.5-flash`, and `DEFAULT_PROVIDER` is `gemini` instead of its alias `vertex_ai`
 - PR checks no longer run on their own for pushes to `main`; the deploy workflow runs them first
 - `dev` runs with bash
 
 ### Removed
 
 - `cloudbuild.yaml`, `./dev set-env` and `./dev create-secrets` (the old `jussi-aibot-production` service and `JUSSI_AIBOT_` secrets)
+
+### Fixed
+
+- Reviews and chatbots failed on new AI Studio keys ("Tekoälypalvelu ei saanut arviota valmiiksi"): Google no longer offers `gemini-2.5-flash-lite` to new users. The default model and the Cloud Run setting are now `gemini-3.5-flash-lite`
 
 ---
 

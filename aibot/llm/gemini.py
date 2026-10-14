@@ -38,7 +38,7 @@ class GeminiProvider(LLMProvider):
         api_key: str = "",
         project: str = "",
         location: str = "europe-north1",
-        default_model: str = "gemini-2.5-flash-lite",
+        default_model: str = "gemini-3.5-flash-lite",
         embedding_model: str = "gemini-embedding-001",
         embed_batch_size: int | None = None,
     ) -> None:
@@ -58,7 +58,7 @@ class GeminiProvider(LLMProvider):
             api_key=env("GEMINI_API_KEY", env("GOOGLE_API_KEY")),
             project=env("GCP_PROJECT"),
             location=env("GCP_LOCATION", env("AGENT_GCP_LOCATION", "europe-north1")),
-            default_model=env("GEMINI_MODEL", env("VERTEX_MODEL", "gemini-2.5-flash-lite")),
+            default_model=env("GEMINI_MODEL", env("VERTEX_MODEL", "gemini-3.5-flash-lite")),
             embedding_model=env("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001"),
             embed_batch_size=batch_size or None,
         )
