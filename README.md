@@ -1,6 +1,7 @@
 # Jussi AI Bot
 
 [![PR Checks](https://github.com/jussipalanen/jussi-aibot/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/jussipalanen/jussi-aibot/actions/workflows/pr-checks.yml)
+[![Deploy](https://github.com/jussipalanen/jussi-aibot/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/jussipalanen/jussi-aibot/actions/workflows/deploy.yml)
 ![Version](https://img.shields.io/badge/version-2.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.137-009688?logo=fastapi&logoColor=white)
@@ -27,12 +28,12 @@ The API documents itself. Open the root URL for a home page with links, or go st
 
 | | Local | Production (Cloud Run) |
 |---|---|---|
-| Home page | [`localhost:8080/`](http://localhost:8080/) | [`/`](https://jussi-aibot-production-61766311353.europe-north1.run.app/) |
-| **Review demo** (CV & application review) | [`localhost:8080/demo/review`](http://localhost:8080/demo/review) | [`/demo/review`](https://jussi-aibot-production-61766311353.europe-north1.run.app/demo/review) |
-| **Code review demo** | [`localhost:8080/demo/code-review`](http://localhost:8080/demo/code-review) | [`/demo/code-review`](https://jussi-aibot-production-61766311353.europe-north1.run.app/demo/code-review) |
-| **Swagger UI** (try requests in the browser) | [`localhost:8080/docs`](http://localhost:8080/docs) | [`/docs`](https://jussi-aibot-production-61766311353.europe-north1.run.app/docs) |
-| ReDoc (readable reference) | [`localhost:8080/redoc`](http://localhost:8080/redoc) | [`/redoc`](https://jussi-aibot-production-61766311353.europe-north1.run.app/redoc) |
-| OpenAPI JSON | [`localhost:8080/openapi.json`](http://localhost:8080/openapi.json) | [`/openapi.json`](https://jussi-aibot-production-61766311353.europe-north1.run.app/openapi.json) |
+| Home page | [`localhost:8080/`](http://localhost:8080/) | [`/`](https://jussi-ai-platform-1097769575593.europe-north1.run.app/) |
+| **Review demo** (CV & application review) | [`localhost:8080/demo/review`](http://localhost:8080/demo/review) | [`/demo/review`](https://jussi-ai-platform-1097769575593.europe-north1.run.app/demo/review) |
+| **Code review demo** | [`localhost:8080/demo/code-review`](http://localhost:8080/demo/code-review) | [`/demo/code-review`](https://jussi-ai-platform-1097769575593.europe-north1.run.app/demo/code-review) |
+| **Swagger UI** (try requests in the browser) | [`localhost:8080/docs`](http://localhost:8080/docs) | [`/docs`](https://jussi-ai-platform-1097769575593.europe-north1.run.app/docs) |
+| ReDoc (readable reference) | [`localhost:8080/redoc`](http://localhost:8080/redoc) | [`/redoc`](https://jussi-ai-platform-1097769575593.europe-north1.run.app/redoc) |
+| OpenAPI JSON | [`localhost:8080/openapi.json`](http://localhost:8080/openapi.json) | [`/openapi.json`](https://jussi-ai-platform-1097769575593.europe-north1.run.app/openapi.json) |
 
 On Render the same paths work on your service URL, e.g. `https://<your-service>.onrender.com/docs`, `https://<your-service>.onrender.com/demo/review` and `https://<your-service>.onrender.com/demo/code-review`.
 
@@ -520,35 +521,48 @@ Replace the Cloud Run URL with the Render URL in your frontends or their backend
 <details>
 <summary><b>☁️ Deploy on Google Cloud Run</b></summary>
 
-**Production URL:** `https://jussi-aibot-production-61766311353.europe-north1.run.app`
+**Production:** service `jussi-ai-platform` in project `client-jussialanen`, region `europe-north1` — `https://jussi-ai-platform-1097769575593.europe-north1.run.app`
 
-Commits to `main` deploy through Cloud Build when a trigger is configured. Manually:
+One container serves both the API and the pages (home, demos, docs).
+
+### Automatic deploys
+
+`.github/workflows/deploy.yml` runs the PR checks on every push to `main` (except Markdown-only changes) and then deploys with `gcloud run deploy --source .`: Cloud Build builds the `Dockerfile` and Cloud Run starts a new revision. GitHub signs in to Google Cloud with Workload Identity Federation, so no Google key is stored in GitHub. It needs these repository variables (**Settings → Secrets and variables → Actions → Variables**); without them the workflow is skipped:
+
+| Variable | Value |
+|---|---|
+| `GCP_PROJECT_ID` | `client-jussialanen` |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/1097769575593/locations/global/workloadIdentityPools/github/providers/jussi-aibot` |
+| `GCP_SERVICE_ACCOUNT` | `github-deployer@client-jussialanen.iam.gserviceaccount.com` |
+
+The provider accepts only this repository's `main` branch. Run the workflow by hand under **Actions → Deploy → Run workflow**.
+
+### What every deploy sets
+
+- **Variables:** exactly those in [`cloud-run.env.yaml`](cloud-run.env.yaml). A variable removed there is removed from the service. Never put secrets in it; the file is public.
+- **Secret:** `GEMINI_API_KEY` from Secret Manager, as `jussi-ai-platform-gemini-api-key` (secret names start with `jussi-ai-platform-`, because secrets are shared by the whole project). A deploy fails until it exists: `./dev cloud-env secret GEMINI_API_KEY` (`./dev deploy` and `cloud-env apply` check this first). To add another secret, for example `AI_SECRET_KEY` for server-to-server keys or `AGENT_EMAIL` and `AGENT_PASSWORD` for the JussiSpace agent's login, run `./dev cloud-env secret KEY` and list it in `SECRETS` in `deploy.yml` and `CLOUD_RUN_SECRETS` in `dev`.
+- **Scaling for 24/7 at low cost:** exactly one instance (`--min-instances=1 --max-instances=1`), so there are no cold starts and the in-memory caches and rate limits are shared by all requests. CPU is allocated only while a request is served (`--cpu-throttling`), so the idle time is billed at Cloud Run's much lower idle rate. 1 vCPU and 512 MiB. Change `SCALING` in `deploy.yml` and `CLOUD_RUN_SCALING` in `dev` together.
+
+### By hand
+
+Uses gcloud's active project (`gcloud config set project client-jussialanen`):
 
 ```bash
-gcloud builds submit --config=cloudbuild.yaml
-gcloud builds submit --config=cloudbuild.yaml \
-  --substitutions=_DEFAULT_PROVIDER=vertex_ai,_ALLOWED_ORIGINS=https://yourdomain.com
+./dev deploy                                  # build and deploy this working copy, as the workflow does
+./dev cloud-env list                          # the service's variables (secrets by name only)
+./dev cloud-env values                        # the same with secret values in plain text (= list --values)
+./dev cloud-env apply                         # set exactly cloud-run.env.yaml, without rebuilding
+./dev cloud-env set DEMO_RATE_LIMIT=30/day    # try a value until the next deploy
+./dev cloud-env unset LOG_FORWARDED_FOR
+./dev cloud-env secret GEMINI_API_KEY         # asks for the value without showing it
+./dev cloud-env secrets                       # asks for every secret the deploy needs
 ```
 
-Gemini runs through Vertex AI with the service's own service account (`GCP_PROJECT` is set by `cloudbuild.yaml`). Grant it the **Vertex AI User** role:
+Values set with `set` and `unset` last until the next deploy; change `cloud-run.env.yaml` to keep them.
 
-```bash
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member=serviceAccount:YOUR_SA@$PROJECT_ID.iam.gserviceaccount.com \
-  --role=roles/aiplatform.user
-```
+### Gemini
 
-Secrets come from Secret Manager (`JUSSI_AIBOT_*`). Create or update one:
-
-```bash
-echo -n "value" | gcloud secrets versions add JUSSI_AIBOT_AGENT_PASSWORD --data-file=-
-```
-
-Push non-secret `.env` values to the running service without rebuilding:
-
-```bash
-./dev set-env                                    # jussi-aibot-production, europe-north1
-```
+`GEMINI_API_KEY` is used when set. Without it, set `GCP_PROJECT` in `cloud-run.env.yaml` to use Vertex AI with the service's account instead: enable the Vertex AI API and grant the account the **Vertex AI User** role.
 
 </details>
 
@@ -566,7 +580,8 @@ Push non-secret `.env` values to the running service without rebuilding:
 | `./dev local` | Run with the local venv (no Docker) |
 | `./dev test` / `./dev test-local` | Run tests in Docker / locally |
 | `./dev generate-postman` | Regenerate the Postman collection |
-| `./dev set-env [svc] [region]` | Push `.env` values to Cloud Run |
+| `./dev deploy` | Deploy this working copy to Cloud Run |
+| `./dev cloud-env ...` | Show or change the Cloud Run service's variables and secrets (see **Deploy on Google Cloud Run**) |
 
 Compose mounts the project and runs Uvicorn with `--reload`, so code and config edits apply immediately. `.env` is loaded automatically and never copied into the image.
 
@@ -674,7 +689,7 @@ config/
   rubrics/*.yaml           Review rubrics
   clients.example.yaml     Template for per-client keys
 render.yaml                Render Blueprint
-cloudbuild.yaml            Cloud Build → Cloud Run
+cloud-run.env.yaml         Cloud Run variables (see .github/workflows/deploy.yml)
 ```
 
 </details>
