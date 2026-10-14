@@ -1,5 +1,5 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CMD="${1:-help}"
@@ -7,6 +7,188 @@ CMD="${1:-help}"
 # Docker Compose helpers
 dc() {
   docker compose -f "${PROJECT_DIR}/docker-compose.yml" "$@"
+}
+
+die() {
+  echo "dev: $*" >&2
+  exit 1
+}
+
+# ── Cloud Run ────────────────────────────────────────────────────────────────
+# Cloud Run commands use gcloud's active project. Environment variables belong to
+# the service, so their names need no prefix; secret names are project-wide, so
+# they start with jussi-ai-platform-.
+CLOUD_RUN_SERVICE="${CLOUD_RUN_SERVICE:-jussi-ai-platform}"
+CLOUD_RUN_REGION="${CLOUD_RUN_REGION:-europe-north1}"
+SECRET_PREFIX="jussi-ai-platform-"
+# The service's variables, secret references and scaling, as deploy.yml sets them.
+CLOUD_RUN_ENV_FILE="${PROJECT_DIR}/cloud-run.env.yaml"
+CLOUD_RUN_SECRETS="GEMINI_API_KEY=jussi-ai-platform-gemini-api-key:latest"
+CLOUD_RUN_SCALING=(--min-instances=1 --max-instances=1 --cpu=1 --memory=512Mi --cpu-throttling --cpu-boost --concurrency=80 --timeout=300)
+
+# Changes made by hand last only until the next deploy.
+warn_env_file() {
+  echo "Note: the next deploy sets the variables in cloud-run.env.yaml again; change that file to keep this." >&2
+}
+
+gcloud_project() {
+  command -v gcloud >/dev/null || die "gcloud is not installed"
+  PROJECT=$(gcloud config get-value project 2>/dev/null)
+  [[ -n $PROJECT ]] || die "no gcloud project; run: gcloud config set project <project-id>"
+}
+
+# Runs gcloud run services <command> for the service, e.g. run_service update --update-env-vars A=1.
+run_service() {
+  local command=$1
+  shift
+  gcloud run services "$command" "$CLOUD_RUN_SERVICE" --project "$PROJECT" --region "$CLOUD_RUN_REGION" "$@"
+}
+
+is_env_key() {
+  [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+}
+
+# GEMINI_API_KEY → jussi-ai-platform-gemini-api-key
+secret_name() {
+  echo "${SECRET_PREFIX}$(tr '[:upper:]_' '[:lower:]-' <<<"$1")"
+}
+
+# Asks for KEY's value without showing it and stores it as a new version of its
+# secret. Returns 1 when the answer is empty.
+store_secret() {
+  local key=$1 secret value account
+  secret=$(secret_name "$key")
+  read -rsp "Value for $key → $secret (not shown, empty skips): " value
+  echo
+  [[ -n $value ]] || return 1
+  if gcloud secrets describe "$secret" --project "$PROJECT" >/dev/null 2>&1; then
+    printf %s "$value" | gcloud secrets versions add "$secret" --project "$PROJECT" --data-file=-
+  else
+    printf %s "$value" | gcloud secrets create "$secret" --project "$PROJECT" --replication-policy=automatic --data-file=-
+    # The service runs as its own account, or as the Compute Engine default account.
+    account=$(run_service describe --format='value(spec.template.spec.serviceAccountName)' 2>/dev/null || true)
+    [[ -n $account ]] || account="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')-compute@developer.gserviceaccount.com"
+    gcloud secrets add-iam-policy-binding "$secret" --project "$PROJECT" \
+      --member="serviceAccount:$account" --role=roles/secretmanager.secretAccessor --format=none
+  fi
+  unset value
+}
+
+# Stops before a deploy or apply when a secret is missing: the new revision would
+# fail and Cloud Run would mark the service failed.
+check_secrets() {
+  local ref key missing=()
+  IFS=, read -ra refs <<<"$CLOUD_RUN_SECRETS"
+  for ref in "${refs[@]}"; do
+    key=${ref%%=*}
+    gcloud secrets versions describe latest --secret "$(secret_name "$key")" --project "$PROJECT" >/dev/null 2>&1 ||
+      missing+=("$key")
+  done
+  [[ ${#missing[@]} -eq 0 ]] || die "missing secrets: ${missing[*]}; add them with ./dev cloud-env secrets"
+}
+
+cloud_env() {
+  local action="${1:-list}"
+  shift || true
+  gcloud_project
+  case $action in
+    list|values)
+      # Plain variables with their values; secrets show the secret's name, and their
+      # value only with --values (or the values alias).
+      local show_values=0 name secret version
+      [[ $action == values || ${1:-} == --values ]] && show_values=1
+      run_service describe --format=json | python3 -c '
+import json, sys
+for e in json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", []):
+    ref = e.get("valueFrom", {}).get("secretKeyRef")
+    print("\t".join([e["name"], "secret", ref["name"], ref["key"]] if ref else [e["name"], "value", e.get("value", "")]))' |
+        while IFS=$'\t' read -r name kind secret version; do
+          if [[ $kind == value ]]; then
+            echo "$name=$secret"
+          elif [[ $show_values == 1 ]]; then
+            echo "$name=$(gcloud secrets versions access "$version" --secret "$secret" --project "$PROJECT")"
+          else
+            echo "$name  (secret $secret:$version)"
+          fi
+        done
+      # Before the first deploy the service runs a placeholder without variables, so
+      # show what a deploy would set instead.
+      if ! run_service describe --format='value(spec.template.spec.containers[0].env)' | grep -q .; then
+        echo "$CLOUD_RUN_SERVICE has no variables yet; a deploy would set these:" >&2
+        python3 - "$CLOUD_RUN_ENV_FILE" <<'PY'
+import sys
+for line in open(sys.argv[1]):
+    line = line.split(" #")[0].strip()
+    if line and not line.startswith("#") and ":" in line:
+        key, value = (part.strip() for part in line.split(":", 1))
+        print("%s=%s" % (key, value.strip("'\"")))
+PY
+        local ref key
+        IFS=, read -ra refs <<<"$CLOUD_RUN_SECRETS"
+        for ref in "${refs[@]}"; do
+          key=${ref%%=*} secret=${ref#*=} secret=${secret%%:*}
+          if ! gcloud secrets versions describe latest --secret "$secret" --project "$PROJECT" >/dev/null 2>&1; then
+            echo "$key  (secret $secret: MISSING, add it with ./dev cloud-env secrets)"
+          elif [[ $show_values == 1 ]]; then
+            echo "$key=$(gcloud secrets versions access latest --secret "$secret" --project "$PROJECT")"
+          else
+            echo "$key  (secret $secret:latest)"
+          fi
+        done
+      fi
+      ;;
+    apply)
+      # Sets exactly the variables in cloud-run.env.yaml without rebuilding.
+      check_secrets
+      echo "Updating $CLOUD_RUN_SERVICE (project $PROJECT) from cloud-run.env.yaml"
+      run_service update --env-vars-file "$CLOUD_RUN_ENV_FILE" --update-secrets "$CLOUD_RUN_SECRETS"
+      ;;
+    set)
+      [[ $# -ge 1 ]] || die "usage: ./dev cloud-env set KEY=VALUE..."
+      local pair flags=()
+      for pair in "$@"; do
+        [[ $pair == *=* ]] && is_env_key "${pair%%=*}" || die "expected KEY=VALUE, got '$pair'"
+        # ^@@^ makes @@ the separator, so values may contain commas (e.g. ALLOWED_ORIGINS).
+        flags+=(--update-env-vars "^@@^$pair")
+      done
+      echo "Updating $CLOUD_RUN_SERVICE (project $PROJECT): ${*%%=*}"
+      run_service update "${flags[@]}"
+      warn_env_file
+      ;;
+    unset)
+      [[ $# -ge 1 ]] || die "usage: ./dev cloud-env unset KEY..."
+      local key
+      for key in "$@"; do is_env_key "$key" || die "not a variable name: '$key'"; done
+      run_service update --remove-env-vars "$(IFS=,; echo "$*")"
+      warn_env_file
+      ;;
+    secret)
+      [[ $# -eq 1 ]] && is_env_key "$1" || die "usage: ./dev cloud-env secret KEY"
+      local key=$1 secret
+      secret=$(secret_name "$key")
+      store_secret "$key" || die "empty value"
+      # A plain variable with the same name must go first; gcloud cannot turn it into a secret.
+      run_service update --update-secrets "$key=$secret:latest"
+      [[ ,$CLOUD_RUN_SECRETS, == *,$key=* ]] ||
+        echo "Note: add $key=$secret:latest to SECRETS in .github/workflows/deploy.yml and CLOUD_RUN_SECRETS in dev." >&2
+      ;;
+    secrets)
+      # Asks for every secret the deploy needs; an empty answer keeps the current value.
+      local ref key missing=()
+      IFS=, read -ra refs <<<"$CLOUD_RUN_SECRETS"
+      for ref in "${refs[@]}"; do
+        key=${ref%%=*}
+        store_secret "$key" ||
+          gcloud secrets describe "$(secret_name "$key")" --project "$PROJECT" >/dev/null 2>&1 ||
+          missing+=("$key")
+      done
+      [[ ${#missing[@]} -eq 0 ]] || die "still missing: ${missing[*]}; deploys fail until they exist"
+      echo "All secrets exist. Deploy with ./dev deploy or a push to main."
+      ;;
+    *)
+      die "usage: ./dev cloud-env list|values|apply|set|unset|secret|secrets"
+      ;;
+  esac
 }
 
 case "${CMD}" in
@@ -46,113 +228,6 @@ case "${CMD}" in
     PORT="${PORT:-8001}"
     exec "${VENV_PYTHON}" -m uvicorn main:app --reload --host "${HOST}" --port "${PORT}"
     ;;
-  set-env)
-    # Push .env values to a running Cloud Run service (no rebuild)
-    SERVICE="${2:-jussi-aibot-production}"
-    REGION="${3:-europe-north1}"
-    ENV_FILE="${PROJECT_DIR}/.env"
-
-    if [ ! -f "${ENV_FILE}" ]; then
-      echo "Error: .env file not found. Copy .env.example to .env first."
-      exit 1
-    fi
-
-    # Write a temporary Python script to parse .env safely
-    TMPSCRIPT="$(mktemp /tmp/setenv_XXXXXX.py)"
-    cat > "${TMPSCRIPT}" << 'PYEOF'
-import sys
-env_file = sys.argv[1]
-# Vars that only make sense locally (Docker mounts, local paths, secrets)
-skip = {
-    "GCP_KEY_PATH", "GOOGLE_APPLICATION_CREDENTIALS", "HF_HOME",
-    "AGENT_EMAIL", "AGENT_PASSWORD", "API_KEYS", "PUTER_API_KEY",
-}
-pairs = []
-with open(env_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line or line.startswith('#') or '=' not in line:
-            continue
-        key, _, val = line.partition('=')
-        key = key.strip()
-        val = val.strip().strip('"').strip("'")
-        if key in skip or not val:
-            continue
-        pairs.append(f"{key}={val}")
-if pairs:
-    # Use :: as delimiter so commas/URLs in values are safe
-    print("^::^" + "::".join(pairs))
-PYEOF
-
-    ENV_STR=$(python3 "${TMPSCRIPT}" "${ENV_FILE}")
-    rm -f "${TMPSCRIPT}"
-
-    if [ -z "${ENV_STR}" ]; then
-      echo "Error: no env vars found in .env"
-      exit 1
-    fi
-
-    echo "Updating '${SERVICE}' env vars in '${REGION}'..."
-    gcloud run services update "${SERVICE}" \
-      --region="${REGION}" \
-      --set-env-vars="${ENV_STR}"
-    echo "Done."
-    ;;
-  create-secrets)
-    # Create or update all required secrets in Secret Manager with JUSSI_AIBOT_ prefix.
-    # Reads default values from .env (if present), then prompts to confirm/override.
-    PREFIX="JUSSI_AIBOT_"
-    ENV_FILE="${PROJECT_DIR}/.env"
-    SECRETS="AI_SECRET_KEY AGENT_EMAIL AGENT_PASSWORD PUTER_API_KEY API_KEYS"
-
-    echo "Creating/updating Secret Manager secrets (prefix: ${PREFIX})"
-    echo ""
-
-    for SECRET in ${SECRETS}; do
-      SM_NAME="${PREFIX}${SECRET}"
-
-      # Read default from .env if available
-      DEFAULT=""
-      if [ -f "${ENV_FILE}" ]; then
-        LINE=$(grep "^${SECRET}=" "${ENV_FILE}" 2>/dev/null | head -1 || true)
-        if [ -n "${LINE}" ]; then
-          DEFAULT="${LINE#*=}"
-          DEFAULT=$(printf '%s' "${DEFAULT}" | sed "s/^['\"]//;s/['\"]$//")
-        fi
-      fi
-
-      if [ -n "${DEFAULT}" ]; then
-        printf "  %s [leave blank to use .env value]: " "${SM_NAME}"
-      else
-        printf "  %s: " "${SM_NAME}"
-      fi
-
-      stty -echo 2>/dev/null || true
-      read -r INPUT
-      stty echo 2>/dev/null || true
-      echo ""
-
-      VALUE="${INPUT:-${DEFAULT}}"
-
-      if [ -z "${VALUE}" ]; then
-        echo "    Skipping (no value)"
-        continue
-      fi
-
-      if gcloud secrets describe "${SM_NAME}" --quiet >/dev/null 2>&1; then
-        printf '%s' "${VALUE}" | gcloud secrets versions add "${SM_NAME}" --data-file=-
-        echo "    Updated: ${SM_NAME}"
-      else
-        printf '%s' "${VALUE}" | gcloud secrets create "${SM_NAME}" \
-          --replication-policy=automatic \
-          --data-file=-
-        echo "    Created: ${SM_NAME}"
-      fi
-    done
-
-    echo ""
-    echo "Done. Secrets are accessible in Cloud Run via --set-secrets."
-    ;;
   test)
     # Run pytest inside the container (all deps already installed)
     dc run --rm \
@@ -186,6 +261,22 @@ PYEOF
       api python scripts/generate_postman.py --output "${OUTPUT}" --base-url "${BASE_URL}"
     echo "Collection saved to: ${PROJECT_DIR}/${OUTPUT}"
     ;;
+  deploy)
+    # Builds the Dockerfile with Cloud Build and deploys a new revision with the
+    # variables in cloud-run.env.yaml, the secrets and the scaling, as deploy.yml does.
+    # Extra args go to gcloud run deploy, e.g. ./dev deploy --quiet
+    shift
+    gcloud_project
+    check_secrets
+    echo "Deploying $CLOUD_RUN_SERVICE to Cloud Run (project $PROJECT, region $CLOUD_RUN_REGION)."
+    exec gcloud run deploy "$CLOUD_RUN_SERVICE" --source "$PROJECT_DIR" --project "$PROJECT" \
+      --region "$CLOUD_RUN_REGION" --env-vars-file "$CLOUD_RUN_ENV_FILE" \
+      --update-secrets "$CLOUD_RUN_SECRETS" "${CLOUD_RUN_SCALING[@]}" "$@"
+    ;;
+  cloud-env)
+    shift
+    cloud_env "$@"
+    ;;
   help|--help|-h)
     echo "Usage: ./dev <command> [args]"
     echo ""
@@ -198,11 +289,23 @@ PYEOF
     echo "  ps                          Show container status"
     echo "  shell [svc]                 Open shell in container (default: api)"
     echo "  local                       Run locally with venv (no Docker)"
-    echo "  create-secrets              Create/update Secret Manager secrets (prefix: JUSSI_AIBOT_)"
     echo "  test [pytest-args]          Run pytest inside the container"
     echo "  test-local [pytest-args]    Run pytest with local venv"
-    echo "  set-env [svc] [region]      Push .env values to Cloud Run (default: jussi-aibot-production, europe-north1)"
     echo "  generate-postman [out] [url] Generate Postman collection (default: postman/postman_collection.json, http://localhost:8080)"
+    echo ""
+    echo "Cloud Run (gcloud's active project; service ${CLOUD_RUN_SERVICE}, ${CLOUD_RUN_REGION}):"
+    echo "  deploy [args]               Build and deploy this working copy with cloud-run.env.yaml and the"
+    echo "                              secrets; args go to gcloud run deploy, e.g. ./dev deploy --quiet"
+    echo "  cloud-env list [--values]   Show the service's variables; secrets by name, or with --values"
+    echo "                              their values too (shown in plain text)"
+    echo "  cloud-env values            Same as cloud-env list --values"
+    echo "  cloud-env apply             Set exactly the variables in cloud-run.env.yaml, without rebuilding"
+    echo "  cloud-env set KEY=VALUE...  Add or change variables until the next deploy; to keep a value,"
+    echo "                              change cloud-run.env.yaml instead"
+    echo "  cloud-env unset KEY...      Remove variables until the next deploy"
+    echo "  cloud-env secret KEY        Ask for a value without showing it, store it in Secret Manager as"
+    echo "                              ${SECRET_PREFIX}<key> and give it to the service as KEY"
+    echo "  cloud-env secrets           Ask for every secret the deploy needs (empty keeps the current one)"
     ;;
   *)
     echo "Unknown command: ${CMD}"

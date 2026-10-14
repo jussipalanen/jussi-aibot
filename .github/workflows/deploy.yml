@@ -1,0 +1,79 @@
+# Deploys the service to Google Cloud Run when a push to main changes the app, after
+# the PR checks pass. Signs in with Workload Identity Federation, so no Google key
+# is stored in GitHub. Needs the repository variables GCP_PROJECT_ID,
+# GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT (see the README's
+# "Deploy on Google Cloud Run" section); without them the workflow is skipped.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'postman/**'
+      - 'render.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push waits instead of cancelling a deploy halfway.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  SERVICE: jussi-ai-platform
+  REGION: europe-north1
+  # Secret Manager references, not values: VARIABLE=secret:version. Keep in step with the dev script.
+  SECRETS: GEMINI_API_KEY=jussi-ai-platform-gemini-api-key:latest
+  # Always on at the lowest cost: one instance that never scales to zero or out, and
+  # CPU only while serving requests, so the idle time is billed at the idle rate.
+  # Keep in step with the dev script.
+  SCALING: --min-instances=1 --max-instances=1 --cpu=1 --memory=512Mi --cpu-throttling --cpu-boost --concurrency=80 --timeout=300
+
+jobs:
+  ci:
+    name: CI
+    if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+    uses: ./.github/workflows/pr-checks.yml
+
+  deploy:
+    name: Cloud Run
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # Builds the Dockerfile with Cloud Build and deploys a new revision with exactly
+      # the variables in cloud-run.env.yaml, the secrets and the scaling above.
+      - name: Deploy
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: >
+          gcloud run deploy "$SERVICE"
+          --source .
+          --region "$REGION"
+          --project "$PROJECT_ID"
+          --env-vars-file cloud-run.env.yaml
+          --update-secrets "$SECRETS"
+          $SCALING
+          --quiet
+
+      - name: Check the health endpoint
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          url=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')
+          curl --silent --show-error --fail --retry 5 --retry-all-errors "$url/health"

@@ -4,7 +4,7 @@ id: jussimatic-ai-cv-chat
 name: CV assistant
 description: Answers questions about a person's CV, skills and work history.
 provider: ${JUSSIMATIC_CV_PROVIDER:-${AGENT_PROVIDER:-gemini}}
-model: ${JUSSIMATIC_CV_VERTEX_MODEL:-${AGENT_VERTEX_MODEL:-gemini-2.5-flash}}
+model: ${JUSSIMATIC_CV_VERTEX_MODEL:-${AGENT_VERTEX_MODEL:-gemini-2.5-flash-lite}}
 
 language_instructions:
   fi: Vastaa aina suomeksi.

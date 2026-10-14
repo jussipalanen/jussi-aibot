@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Google Cloud Run deployment with automatic deploys from GitHub, because the Render service stopped responding.
+
+### Added
+
+- Cloud Run service `jussi-ai-platform` (project `client-jussialanen`, region `europe-north1`) serving the API and the pages from one container
+- `.github/workflows/deploy.yml`: runs the PR checks on pushes to `main`, then deploys with `gcloud run deploy --source .` and checks `/health`; signs in with Workload Identity Federation
+- `cloud-run.env.yaml`: the service's environment variables, set exactly on every deploy
+- `GEMINI_API_KEY` from Secret Manager as `jussi-ai-platform-gemini-api-key`; secret names start with `jussi-ai-platform-`. No other secrets: without `AI_SECRET_KEY` only `ALLOWED_ORIGINS` and the demo pages have access, and the JussiSpace agent has no login
+- Always-on scaling at low cost: one instance (`--min-instances=1 --max-instances=1`), CPU only during requests, 1 vCPU, 512 MiB
+- `./dev deploy`: deploy the working copy by hand, as the workflow does; it and `cloud-env apply` stop first when a secret is missing, so no failed revision is created
+- `./dev cloud-env list|values|apply|set|unset|secret|secrets`: show the variables (`values`, or `list --values`, also shows the secret values), apply `cloud-run.env.yaml` without rebuilding, change single variables, and store secrets without showing them
+
+### Changed
+
+- `FORWARDED_IP_DEPTH=1` on Cloud Run, so rate limits count per visitor
+- All chatbots and reviews use `gemini-2.5-flash-lite` through the AI Studio key (`gemini` provider), so they run on its free tier; the Jussimatic CV chat used `gemini-2.5-flash`, and `DEFAULT_PROVIDER` is `gemini` instead of its alias `vertex_ai`
+- PR checks no longer run on their own for pushes to `main`; the deploy workflow runs them first
+- `dev` runs with bash
+
+### Removed
+
+- `cloudbuild.yaml`, `./dev set-env` and `./dev create-secrets` (the old `jussi-aibot-production` service and `JUSSI_AIBOT_` secrets)
+
 ---
 
 ## [2.1.0] - 2026-10-10
