@@ -3,11 +3,8 @@ Home page, review demos, health check, version and robots.txt.
 """
 import html
 import json
-import platform
-import sys
 from pathlib import Path
 
-import fastapi
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -145,18 +142,9 @@ async def health() -> dict[str, str]:
 
 @router.get("/version", summary="Version information")
 async def version() -> dict[str, str]:
-    """Application, Python and FastAPI versions."""
-    try:
-        import torch
+    """The application version.
 
-        torch_version = torch.__version__
-    except ImportError:
-        torch_version = "N/A (ML dependencies not installed)"
-
-    return {
-        "version": __version__,
-        "python_version": sys.version.split()[0],
-        "platform": platform.platform(),
-        "fastapi_version": fastapi.__version__,
-        "torch_version": torch_version,
-    }
+    Runtime and platform versions are left out: they would tell an attacker which known
+    vulnerabilities to try.
+    """
+    return {"version": __version__}

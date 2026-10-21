@@ -8,6 +8,7 @@ Authentication, in order of preference:
   service account on Cloud Run, or `GOOGLE_APPLICATION_CREDENTIALS` elsewhere.
 """
 import asyncio
+import logging
 from typing import Any
 
 from aibot.llm.base import (
@@ -21,6 +22,8 @@ from aibot.llm.base import (
     ToolSpec,
 )
 from aibot.settings import env, env_int
+
+logger = logging.getLogger(__name__)
 
 # Prefix for tool call ids we generate when the API does not return one.
 _LOCAL_ID_PREFIX = "gemini-call-"
@@ -136,7 +139,9 @@ class GeminiProvider(LLMProvider):
         except ProviderNotConfigured:
             raise
         except Exception as exc:
-            raise ProviderError(f"Gemini request failed: {exc}") from exc
+            # Details stay in the log: they can name the project, model or quota.
+            logger.warning("Gemini request failed: %s", exc)
+            raise ProviderError("Gemini request failed.") from exc
 
         if not response.candidates or response.candidates[0].content is None:
             feedback = getattr(response, "prompt_feedback", None)
@@ -190,7 +195,8 @@ class GeminiProvider(LLMProvider):
         try:
             results = await asyncio.gather(*(embed_batch(batch) for batch in batches))
         except Exception as exc:
-            raise ProviderError(f"Gemini embedding request failed: {exc}") from exc
+            logger.warning("Gemini embedding request failed: %s", exc)
+            raise ProviderError("Gemini embedding request failed.") from exc
 
         vectors = [vector for batch in results for vector in batch]
         if len(vectors) != len(texts):

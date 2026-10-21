@@ -2,6 +2,7 @@
 Puter AI provider (text generation only — no tool calling or embeddings).
 """
 import json
+import logging
 
 from starlette.concurrency import run_in_threadpool
 
@@ -14,6 +15,8 @@ from aibot.llm.base import (
     ToolSpec,
 )
 from aibot.settings import env
+
+logger = logging.getLogger(__name__)
 
 
 class PuterProvider(LLMProvider):
@@ -74,7 +77,8 @@ class PuterProvider(LLMProvider):
                 api_key=self.api_key,
             )
         except Exception as exc:
-            raise ProviderError(f"Puter AI request failed: {exc}") from exc
+            logger.warning("Puter AI request failed: %s", exc)
+            raise ProviderError("Puter AI request failed.") from exc
 
         return LLMResponse(text=extract_puter_text(response))
 
@@ -96,7 +100,8 @@ def extract_puter_text(response: object) -> str:
         if response.get("success") is False or ("error" in response and "status" in response):
             error_msg = response.get("error") or response.get("message")
             if isinstance(error_msg, str) and error_msg.strip():
-                raise ProviderError(f"Puter AI request failed: {error_msg.strip()}")
+                logger.warning("Puter AI request failed: %s", error_msg.strip())
+                raise ProviderError("Puter AI request failed.")
 
         choices = response.get("choices")
         if isinstance(choices, list) and choices and isinstance(choices[0], dict):
@@ -132,7 +137,6 @@ def extract_puter_text(response: object) -> str:
         response_debug = json.dumps(response, default=str)
     except (TypeError, ValueError):
         response_debug = str(response)
-    raise ProviderError(
-        f"Puter AI returned an unreadable response. Response structure: {response_debug[:500]}"
-    )
+    logger.warning("Puter AI returned an unreadable response: %s", response_debug[:500])
+    raise ProviderError("Puter AI returned an unreadable response.")
 

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from pydantic import BaseModel, Field
 
 from aibot.agents.engine import ChatTurn
-from aibot.api.deps import call_ai, read_document, require_client, services
+from aibot.api.deps import MAX_MESSAGE_CHARS, UserToken, call_ai, read_document, require_client, services
 from aibot.llm import Message, ProviderRegistry
 from aibot.review import cv_fi
 from aibot.security import Client
@@ -21,16 +21,16 @@ class ChatHistoryMessage(BaseModel):
     """A single message in a multi-turn chat history."""
 
     role: str = Field(description='"user" or "assistant"')
-    content: str
+    content: str = Field(max_length=MAX_MESSAGE_CHARS)
 
 
 class ChatRequest(BaseModel):
     """Request body for `/ai/chat`."""
 
     handler: str = Field(description="Agent id, e.g. `jussispace`", examples=["jussispace"])
-    message: str
+    message: str = Field(max_length=MAX_MESSAGE_CHARS)
     language: str | None = Field(None, description='"fi" or "en"; mirrors the user when omitted')
-    history: list[ChatHistoryMessage] = Field(default_factory=list)
+    history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=100)
 
 
 @router.post("/ai/chat", deprecated=True, summary="Chat with an agent (legacy)")
@@ -38,6 +38,7 @@ async def chat(
     request: Request,
     body: ChatRequest,
     client: Annotated[Client, Depends(require_client("chat"))],
+    user_token: UserToken = None,
 ) -> dict:
     """Same as `POST /v1/agents/{handler}/chat`, with the agent id in the body."""
     svc = services(request)
@@ -50,7 +51,7 @@ async def chat(
     agent = svc.agents.get(body.handler)
     history = [ChatTurn(role=m.role, content=m.content) for m in body.history]
     reply = await call_ai(
-        lambda: agent.chat(body.message, language=body.language, history=history),
+        lambda: agent.chat(body.message, language=body.language, history=history, user_token=user_token or ""),
         error_prefix="Agent error: ",
     )
     return {"reply": reply}

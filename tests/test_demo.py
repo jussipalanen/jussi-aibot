@@ -43,7 +43,7 @@ def test_demo_page(client: TestClient) -> None:
     assert 'data-lang="fi"' in page and 'data-lang="en"' in page
     assert "{{" not in page
     config = _page_config(page)
-    assert config["maxUploadMb"] == 50
+    assert config["maxUploadMb"] == 10
     assert config["appName"] == "Jussi AI Bot"
 
 

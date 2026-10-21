@@ -32,8 +32,9 @@ class FakeAgent:
         self.error = error
         self.calls: list[tuple] = []
 
-    async def chat(self, message, language=None, history=None):
+    async def chat(self, message, language=None, history=None, user_token=""):
         self.calls.append((message, language, history))
+        self.user_token = user_token
         if self.error:
             raise self.error
         return self.reply
@@ -78,10 +79,9 @@ def test_health_head(client: TestClient) -> None:
     assert response.content == b""
 
 
-def test_version(client: TestClient) -> None:
+def test_version_shows_only_the_app_version(client: TestClient) -> None:
     data = client.get("/version").json()
-    assert "python_version" in data
-    assert "fastapi_version" in data
+    assert list(data) == ["version"]
     assert data["version"]
 
 
@@ -241,4 +241,20 @@ def test_chat_agent_unexpected_error_returns_502(make_app: Callable[..., FastAPI
     client = _with_agent(make_app(), FakeAgent(error=Exception("model blew up")))
     response = client.post("/ai/chat", json={"handler": "jussispace", "message": "test"})
     assert response.status_code == 502
-    assert response.json()["detail"].startswith("Agent error:")
+    assert response.json()["detail"] == "Agent error: internal error"
+
+
+def test_chat_passes_user_token_to_agent(make_app: Callable[..., FastAPI]) -> None:
+    agent = FakeAgent(reply="ok")
+    client = _with_agent(make_app(), agent)
+    response = client.post("/ai/chat", json={"handler": "jussispace", "message": "my orders"},
+                           headers={"X-User-Token": "user-jwt"})
+    assert response.status_code == 200
+    assert agent.user_token == "user-jwt"
+
+
+def test_legacy_chat_limits_message_size(client: TestClient) -> None:
+    body = {"handler": "jussispace", "message": "x" * 8001}
+    assert client.post("/ai/chat", json=body).status_code == 422
+    body = {"handler": "jussispace", "message": "hi", "history": [{"role": "user", "content": "x" * 8001}]}
+    assert client.post("/ai/chat", json=body).status_code == 422

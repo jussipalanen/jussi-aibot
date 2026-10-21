@@ -6,6 +6,7 @@ import os
 import re
 import subprocess  # nosec B404 - used only to run antiword with a fixed argument list
 import tempfile
+import zipfile
 
 import pdfplumber
 from docx import Document
@@ -13,6 +14,11 @@ from docx import Document
 from aibot.review.languages import EXTENSION_LANGUAGES, FILENAME_LANGUAGES
 
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docs", ".docx"}
+
+# Limits on the work one upload can cause; reviews only read the start of a document anyway.
+MAX_PDF_PAGES = 50
+MAX_DOCX_UNPACKED_BYTES = 100 * 1024 * 1024
+ANTIWORD_TIMEOUT_SECONDS = 30
 
 # Source files accepted by rubrics with `input: code`: every file with a known language.
 CODE_EXTENSIONS = frozenset(EXTENSION_LANGUAGES)
@@ -62,10 +68,10 @@ def extract_code_text(file_bytes: bytes) -> str:
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract text from each PDF page."""
+    """Extract text from each PDF page, up to MAX_PDF_PAGES."""
     text_parts = []
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-        for page in pdf.pages:
+        for page in pdf.pages[:MAX_PDF_PAGES]:
             page_text = page.extract_text() or ""
             if page_text:
                 text_parts.append(page_text)
@@ -74,6 +80,11 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
     """Extract paragraph text from DOCX files."""
+    # A DOCX is a ZIP archive: refuse ones that unpack to far more than they weigh (zip bombs).
+    # zipfile never reads past the sizes listed here, so they cap the work.
+    with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+        if sum(info.file_size for info in archive.infolist()) > MAX_DOCX_UNPACKED_BYTES:
+            raise UnsupportedDocument("The document is too large.")
     doc = Document(io.BytesIO(file_bytes))
     paragraphs = [p.text for p in doc.paragraphs if p.text]
     return "\n".join(paragraphs)
@@ -85,12 +96,16 @@ def extract_text_from_doc(file_bytes: bytes) -> str:
         tmp_file.write(file_bytes)
         tmp_path = tmp_file.name
     try:
-        result = subprocess.run(  # nosec B603 B607 - fixed command list, no shell, no user-controlled input in args
-            ["antiword", tmp_path],
-            capture_output=True,
-            text=True,
-            check=False
-        )
+        try:
+            result = subprocess.run(  # nosec B603 B607 - fixed command list, no shell, no user-controlled input in args
+                ["antiword", tmp_path],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=ANTIWORD_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise UnsupportedDocument("Failed to extract text from DOC file.") from exc
         if result.returncode != 0:
             raise UnsupportedDocument("Failed to extract text from DOC file.")
         return result.stdout

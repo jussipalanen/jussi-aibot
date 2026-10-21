@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -26,11 +26,10 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit core dependencies
-        # CVE-2026-4539 (pygments): no fix released yet — re-evaluate when pygments >2.19.2 ships
-        run: pip-audit -r requirements.txt --ignore-vuln CVE-2026-4539
+        run: pip-audit -r requirements.txt
 
       - name: Audit ML dependencies
-        run: pip-audit -r requirements-ml.txt --ignore-vuln CVE-2026-4539
+        run: pip-audit -r requirements-ml.txt
 
   # ── 2. Python static security analysis ────────────────────────────────────
   bandit:
@@ -39,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -83,7 +82,7 @@ jobs:
       - name: Install antiword (required by services.py)
         run: sudo apt-get install -y antiword
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip

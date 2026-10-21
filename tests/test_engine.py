@@ -209,6 +209,38 @@ async def test_login_token_is_refreshed_after_401() -> None:
     assert backend.logins == 2
 
 
+def user_auth_config() -> AgentConfig:
+    config = agent_config()
+    return agent_config(
+        auth={"user": {"type": "user"}},
+        tools=[
+            {**tool.model_dump(exclude_none=True), "http": {**tool.http.model_dump(exclude_none=True), "auth": "user"}}
+            if tool.name == "get_order_status" else tool.model_dump(exclude_none=True)
+            for tool in config.tools
+        ],
+    )
+
+
+async def test_user_auth_tool_needs_the_users_token() -> None:
+    provider = FakeProvider([tool_call("get_order_status", id="42"), LLMResponse(text="sign in")])
+    backend = Backend()
+    agent = make_agent(provider, backend, user_auth_config())
+    await agent.chat("order 42")
+    assert "not signed in" in tool_result(provider, 1)["error"]
+    assert backend.requests == []
+
+
+async def test_user_auth_tool_forwards_the_users_token() -> None:
+    provider = FakeProvider([tool_call("get_order_status", id="42"), LLMResponse(text="ok")])
+    backend = Backend()
+    backend.valid_token = "user-jwt"
+    agent = make_agent(provider, backend, user_auth_config())
+    await agent.chat("order 42", user_token="user-jwt")
+    assert tool_result(provider, 1)["status"] == "approved"
+    assert backend.logins == 0
+    assert [r.headers["authorization"] for r in backend.requests] == ["Bearer user-jwt"]
+
+
 async def test_unknown_tool_and_max_steps() -> None:
     provider = FakeProvider([tool_call("nope")] * 3)
     agent = make_agent(provider, Backend(), agent_config(max_steps=3))

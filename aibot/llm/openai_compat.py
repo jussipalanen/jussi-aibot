@@ -3,6 +3,7 @@ Provider for any OpenAI-compatible chat completions API
 (OpenAI, Groq, OpenRouter, Mistral, Ollama, ...).
 """
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +20,8 @@ from aibot.llm.base import (
     ToolSpec,
 )
 from aibot.settings import env
+
+logger = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 
@@ -113,9 +116,12 @@ class OpenAICompatProvider(LLMProvider):
         try:
             response = await client.post(path, json=payload)
         except httpx.HTTPError as exc:
-            raise ProviderError(f"{self.name} request failed: {exc}") from exc
+            logger.warning("%s request failed: %s", self.name, exc)
+            raise ProviderError(f"{self.name} request failed.") from exc
         if response.status_code >= 400:
-            raise ProviderError(f"{self.name} returned HTTP {response.status_code}: {response.text[:300]}")
+            # The body can name the account, model or quota, so only the log gets it.
+            logger.warning("%s returned HTTP %s: %s", self.name, response.status_code, response.text[:300])
+            raise ProviderError(f"{self.name} returned HTTP {response.status_code}.")
         try:
             return response.json()
         except ValueError as exc:

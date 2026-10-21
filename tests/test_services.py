@@ -13,7 +13,7 @@ from aibot.review.cv_fi import (
     format_summary_by_rating,
     map_rating_text,
 )
-from aibot.review.extract import normalize_whitespace
+from aibot.review.extract import UnsupportedDocument, extract_text_from_docx, normalize_whitespace
 
 
 # ── normalize_whitespace ───────────────────────────────────────────────────
@@ -157,10 +157,25 @@ def test_extract_puter_text_choices_format() -> None:
     assert _extract_puter_text(response) == "choice text"
 
 def test_extract_puter_text_error_payload_raises() -> None:
-    response = {"success": False, "error": "rate limited"}
-    with pytest.raises(ProviderError, match="rate limited"):
+    response = {"success": False, "error": "rate limited for account 123"}
+    with pytest.raises(ProviderError, match="request failed") as error:
         _extract_puter_text(response)
+    assert "account 123" not in str(error.value)
 
 def test_extract_puter_text_unreadable_raises() -> None:
     with pytest.raises(ProviderError, match="unreadable"):
         _extract_puter_text({"unknown": "shape"})
+
+
+# ── upload limits ──────────────────────────────────────────────────────────
+
+def test_docx_that_unpacks_too_large_is_rejected() -> None:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", b"\0" * (101 * 1024 * 1024))
+    assert len(buffer.getvalue()) < 1024 * 1024  # small upload, huge when unpacked
+    with pytest.raises(UnsupportedDocument, match="too large"):
+        extract_text_from_docx(buffer.getvalue())

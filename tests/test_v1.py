@@ -33,6 +33,8 @@ def test_chat_validates_body(client: TestClient) -> None:
     assert client.post("/v1/agents/jussispace/chat", json={"message": ""}).status_code == 422
     body = {"message": "hi", "history": [{"role": "system", "content": "x"}]}
     assert client.post("/v1/agents/jussispace/chat", json=body).status_code == 422
+    body = {"message": "hi", "history": [{"role": "user", "content": "x" * 8001}]}
+    assert client.post("/v1/agents/jussispace/chat", json=body).status_code == 422
 
 
 def test_chat_with_fake_model(make_app: Callable[..., FastAPI]) -> None:
@@ -115,6 +117,39 @@ def test_review_other_provider(make_app: Callable[..., FastAPI]) -> None:
     assert groq.calls[0]["model"] == "m1"
 
 
+_REVIEW_JSON = '{"stars": 3, "summary": "ok", "strengths": [], "weaknesses": []}'
+_ORIGIN = "https://web.test"
+
+
+def test_review_provider_and_model_need_a_key(make_app: Callable[..., FastAPI]) -> None:
+    groq = FakeProvider(text=_REVIEW_JSON)
+    client = TestClient(make_app(env={"ALLOWED_ORIGINS": _ORIGIN}, providers={"gemini": groq, "groq": groq}))
+    headers = {"Origin": _ORIGIN}
+    with patch(_EXTRACT, return_value="text"):
+        for field in ({"provider": "groq"}, {"model": "gemini-pro-max"}):
+            response = client.post("/v1/review", data={"rubric": "cv-en", **field}, files={"file": _DOCX},
+                                   headers=headers)
+            assert response.status_code == 403
+        assert client.post("/v1/review", data={"rubric": "cv-en"}, files={"file": _DOCX},
+                           headers=headers).status_code == 200
+    assert len(groq.calls) == 1
+
+
+def test_review_model_choice_with_key_and_allowlist(make_app: Callable[..., FastAPI]) -> None:
+    gemini = FakeProvider(text=_REVIEW_JSON)
+    client = TestClient(make_app(env={"AI_SECRET_KEY": "k", "REVIEW_MODELS": "cheap-1, cheap-2"},
+                                 providers={"gemini": gemini}))
+    headers = {"Authorization": "Bearer k"}
+    with patch(_EXTRACT, return_value="text"):
+        response = client.post("/v1/review", data={"rubric": "cv-en", "model": "expensive"}, files={"file": _DOCX},
+                               headers=headers)
+        assert response.status_code == 400
+        response = client.post("/v1/review", data={"rubric": "cv-en", "model": "cheap-2"}, files={"file": _DOCX},
+                               headers=headers)
+        assert response.status_code == 200
+    assert gemini.calls[0]["model"] == "cheap-2"
+
+
 def test_providers_endpoint(make_app: Callable[..., FastAPI], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     client = TestClient(make_app())
@@ -137,7 +172,10 @@ def test_shipped_agents_load() -> None:
     assert {"jussispace", "jussimatic-ai-cv-chat"} <= configs.keys()
     tools = {t.name: t for t in configs["jussispace"].tools}
     assert tools["search_properties"].rag is not None
-    assert tools["get_order_status"].http.auth == "jussispace"
+    # Orders must be read with the end user's own token, never a shared account.
+    for name in ("get_order_status", "list_orders"):
+        assert configs["jussispace"].auth[tools[name].http.auth].type == "user"
+    assert "userId" not in tools["list_orders"].parameters["properties"]
 
 
 def test_shipped_rubrics_load() -> None:

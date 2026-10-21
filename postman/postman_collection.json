@@ -65,7 +65,7 @@
                 "health"
               ]
             },
-            "description": "Returns `ok` when the service is running. Makes no AI calls."
+            "description": "Returns `ok` when the service is running. Makes no AI calls.\n\nAlso answers `HEAD`, which uptime monitors such as UptimeRobot send by default."
           },
           "response": []
         },
@@ -90,7 +90,7 @@
                 "version"
               ]
             },
-            "description": "Application, Python and FastAPI versions."
+            "description": "The application version.\n\nRuntime and platform versions are left out: they would tell an attacker which known\nvulnerabilities to try."
           },
           "response": []
         }
@@ -149,7 +149,7 @@
                 "chat"
               ]
             },
-            "description": "Send a message (plus earlier messages for multi-turn chat) and get the agent's reply.",
+            "description": "Send a message (plus earlier messages for multi-turn chat) and get the agent's reply.\n\nTools that show a user's own data (such as orders) need that user's backend token\nin the `X-User-Token` header; without it the agent asks the user to sign in.",
             "body": {
               "mode": "raw",
               "raw": "\"\"",
@@ -216,7 +216,7 @@
                 "review"
               ]
             },
-            "description": "Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses.\n\nUpload a file **or** send the text in the `text` field.",
+            "description": "Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses.\n\nUpload a file **or** send the text in the `text` field. Code rubrics (such as `code-review-en`)\ntake one or more source files in most programming languages and return `suggestions`:\nthe current code and its replacement.",
             "body": {
               "mode": "formdata",
               "formdata": []
