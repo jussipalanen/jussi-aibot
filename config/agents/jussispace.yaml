@@ -33,14 +33,15 @@ system_prompt: |
   Never refuse a property search request due to informal language — always translate it into a search.
   Never ask the user for more details before searching. Always call search_properties immediately with whatever information is available, then present the results.
 
+  Orders belong to the signed-in user. If a tool says the user is not signed in, ask them to sign in;
+  never guess or try other order IDs.
+
+# Orders are fetched with the user's own token (the caller sends it in X-User-Token),
+# so the backend only returns that user's orders. Never use a shared service account here:
+# anyone who can chat could then read every customer's orders.
 auth:
-  jussispace:
-    type: login
-    login_url: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}/auth/login
-    body:
-      email: ${AGENT_EMAIL}
-      password: ${AGENT_PASSWORD}
-    token_field: token
+  user:
+    type: user
 
 tools:
   - name: search_properties
@@ -87,18 +88,17 @@ tools:
     http:
       method: GET
       url: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}/orders/{id}
-      auth: jussispace
+      auth: user
 
   - name: list_orders
-    description: List orders, optionally filtered by user or status.
+    description: List the signed-in user's orders, optionally filtered by status.
     parameters:
       type: object
       properties:
-        userId: {type: integer, description: Filter by user ID}
         status: {type: string, enum: [pending, approved, declined, cancelled], description: Order status}
         page: {type: integer, description: Page number}
         limit: {type: integer, description: Results per page}
     http:
       method: GET
       url: ${JUSSISPACE_API_URL:-https://backend-lab-jussispace.jussialanen.com/api}/orders
-      auth: jussispace
+      auth: user

@@ -51,6 +51,18 @@ Behind a proxy the IP is the proxy's unless `FORWARDED_IP_DEPTH` is set. It read
 
 The model chooses only argument values for tools. Hosts, paths and methods come from the agent config, path values are URL-encoded, and arguments not declared in the tool's JSON Schema are dropped. Backend credentials stay in environment variables and are never shown to the model.
 
+The model is not an access check: anything a tool can fetch, any chat user can ask for. Tools that show personal data (such as JussiSpace orders) use `auth` type `user`, which forwards the end user's own token from the `X-User-Token` header, so the backend decides what that user may see. Without the header the tool answers that the user must sign in. Never give such tools a shared service account (`login`, `bearer` or `header`).
+
+Agent replies can contain HTML built from backend data and user input. Frontends must sanitize replies before rendering them as HTML (e.g. with DOMPurify), or a prompt injection becomes cross-site scripting.
+
+## Cost and abuse limits
+
+- Only clients with an API key may choose the review `provider` or `model` (`403` otherwise); `REVIEW_MODELS` limits which models they may choose.
+- Chat messages and each earlier message in `history` are at most 8 000 characters, with at most 100 history items (the agent keeps the last `history_limit`).
+- Uploads are at most `MAX_UPLOAD_MB` (default 10). Only the first 50 PDF pages are read, a DOCX may unpack to at most 100 MB, and `antiword` gets 30 seconds.
+- Errors from AI providers and unexpected failures are logged in full but answered with a short message, so quotas, project ids and internal URLs are not shown to callers.
+- `/version` shows only the app version.
+
 ## Testing
 
 ```bash

@@ -29,7 +29,7 @@ class AuthSession:
         self._token = ""
         self._lock = asyncio.Lock()
 
-    async def headers(self, http: httpx.AsyncClient) -> dict[str, str]:
+    async def headers(self, http: httpx.AsyncClient, user_token: str = "") -> dict[str, str]:
         """Headers to send with a request."""
         config = self.config
         if config.type == "bearer":
@@ -38,6 +38,8 @@ class AuthSession:
             return {config.header: config.value}
         if config.type == "login":
             return {"Authorization": f"Bearer {await self._login_token(http)}"}
+        if config.type == "user":
+            return {"Authorization": f"Bearer {user_token}"}
         return {}
 
     def invalidate(self) -> None:
@@ -64,8 +66,10 @@ class HttpTool:
         self.auth = auth
         self.allowed_args = set(config.parameters.get("properties", {}))
 
-    async def call(self, arguments: dict[str, Any], http: httpx.AsyncClient) -> Any:
+    async def call(self, arguments: dict[str, Any], http: httpx.AsyncClient, user_token: str = "") -> Any:
         """Call the endpoint and return the decoded JSON (or an error object for the model)."""
+        if self.auth and self.auth.config.type == "user" and not user_token:
+            return {"error": "the user is not signed in; ask them to sign in first"}
         args = {k: v for k, v in arguments.items() if k in self.allowed_args and v is not None}
         try:
             url = self._build_url(args)
@@ -75,8 +79,8 @@ class HttpTool:
         paginate = self.config.http.paginate
         try:
             if paginate:
-                return await self._fetch_all_pages(url, args, http)
-            return await self._request(url, args, http)
+                return await self._fetch_all_pages(url, args, http, user_token)
+            return await self._request(url, args, http, user_token)
         except httpx.HTTPError as exc:
             logger.warning("Tool %s failed: %s", self.config.name, exc)
             return {"error": "the backend could not be reached"}
@@ -91,14 +95,14 @@ class HttpTool:
 
         return _PATH_PARAM.sub(fill, self.config.http.url)
 
-    async def _request(self, url: str, args: dict[str, Any], http: httpx.AsyncClient) -> Any:
+    async def _request(self, url: str, args: dict[str, Any], http: httpx.AsyncClient, user_token: str = "") -> Any:
         config = self.config.http
         send_as_query = config.method in {"GET", "DELETE"}
 
         async def send() -> httpx.Response:
             headers = dict(config.headers)
             if self.auth:
-                headers.update(await self.auth.headers(http))
+                headers.update(await self.auth.headers(http, user_token))
             return await http.request(
                 config.method,
                 url,
@@ -117,14 +121,16 @@ class HttpTool:
             return {"error": f"HTTP {response.status_code}", "detail": _decode(response, 500)}
         return _decode(response)
 
-    async def _fetch_all_pages(self, url: str, args: dict[str, Any], http: httpx.AsyncClient) -> Any:
+    async def _fetch_all_pages(
+        self, url: str, args: dict[str, Any], http: httpx.AsyncClient, user_token: str = "",
+    ) -> Any:
         paginate = self.config.http.paginate
         params = {k: v for k, v in args.items() if k not in (paginate.page_param, paginate.limit_param)}
         params[paginate.limit_param] = paginate.page_size
         items: list[Any] = []
         page, total_pages = 1, 1
         while page <= min(total_pages, paginate.max_pages):
-            result = await self._request(url, {**params, paginate.page_param: page}, http)
+            result = await self._request(url, {**params, paginate.page_param: page}, http, user_token)
             if not isinstance(result, dict) or "error" in result:
                 return result
             items.extend(result.get(paginate.data_field) or [])

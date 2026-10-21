@@ -35,8 +35,6 @@ services:
       JUSSISPACE_FRONTEND_URL: ${JUSSISPACE_FRONTEND_URL:-https://jussispace-production.lab.jussialanen.com}
       JUSSIMATIC_CV_API_URL: ${JUSSIMATIC_CV_API_URL:-}
       JUSSILOG_STORAGE_BASE_URL: ${JUSSILOG_STORAGE_BASE_URL:-}
-      AGENT_EMAIL: ${AGENT_EMAIL:-}
-      AGENT_PASSWORD: ${AGENT_PASSWORD:-}
     volumes:
       - .:/app
       - hf_cache:/opt/hf-cache

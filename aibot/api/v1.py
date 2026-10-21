@@ -7,7 +7,16 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Request
 from pydantic import BaseModel, Field
 
 from aibot.agents.engine import ChatTurn
-from aibot.api.deps import call_ai, read_code_files, read_document, read_text, require_client, services
+from aibot.api.deps import (
+    MAX_MESSAGE_CHARS,
+    UserToken,
+    call_ai,
+    read_code_files,
+    read_document,
+    read_text,
+    require_client,
+    services,
+)
 from aibot.review.rubrics import review_document
 from aibot.security import Client
 
@@ -23,11 +32,11 @@ class AgentInfo(BaseModel):
 
 class HistoryMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(max_length=MAX_MESSAGE_CHARS)
 
 
 class ChatBody(BaseModel):
-    message: str = Field(min_length=1, max_length=8000, examples=["Näytä vapaat asunnot Helsingissä"])
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS, examples=["Näytä vapaat asunnot Helsingissä"])
     language: str | None = Field(None, description="Language code from the agent's list; mirrors the user when omitted", examples=["fi"])
     history: list[HistoryMessage] = Field(default_factory=list, max_length=100)
 
@@ -128,15 +137,20 @@ async def agent_chat(
     agent_id: AgentId,
     body: ChatBody,
     client: Annotated[Client, Depends(require_client("chat"))],
+    user_token: UserToken = None,
 ) -> ChatReply:
-    """Send a message (plus earlier messages for multi-turn chat) and get the agent's reply."""
+    """Send a message (plus earlier messages for multi-turn chat) and get the agent's reply.
+
+    Tools that show a user's own data (such as orders) need that user's backend token
+    in the `X-User-Token` header; without it the agent asks the user to sign in.
+    """
     svc = services(request)
     if not svc.agents.has(agent_id) or not client.can_use_agent(agent_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent '{agent_id}' not found.")
     agent = svc.agents.get(agent_id)
     history = [ChatTurn(role=m.role, content=m.content) for m in body.history]
     reply = await call_ai(
-        lambda: agent.chat(body.message, language=body.language, history=history),
+        lambda: agent.chat(body.message, language=body.language, history=history, user_token=user_token or ""),
         error_prefix="Agent error: ",
     )
     return ChatReply(agent=agent_id, reply=reply)
@@ -166,8 +180,13 @@ async def review(
     ] = None,
     text: Annotated[str | None, Form(description="The document as plain text. Send this or `file`.")] = None,
     rubric: Annotated[str, Form(description="Rubric id from `GET /v1/review/rubrics`")] = "cv-fi",
-    provider: Annotated[str | None, Form(description="Provider name; defaults to REVIEW_PROVIDER")] = None,
-    model: Annotated[str | None, Form(description="Model name; defaults to the provider's default")] = None,
+    provider: Annotated[
+        str | None, Form(description="Provider name; defaults to REVIEW_PROVIDER. Needs an API key.")] = None,
+    model: Annotated[
+        str | None,
+        Form(description="Model name; defaults to the provider's default. Needs an API key, "
+                         "and must be in REVIEW_MODELS when that is set."),
+    ] = None,
 ) -> ReviewResult:
     """Rate a document from 0 to 5 stars against a rubric, with a summary, strengths and weaknesses.
 
@@ -186,7 +205,20 @@ async def review(
     selected = svc.rubrics.get(rubric)
     if selected is None or not client.can_use_rubric(rubric):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Rubric '{rubric}' not found.")
-    provider_name = (provider or "").strip() or svc.settings.review_provider
+    provider = (provider or "").strip()
+    model = (model or "").strip()
+    if (provider or model) and not client.key_hash and not svc.clients.open_access:
+        # Without a key, anyone could run any model on this service's credentials.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Choosing the provider or model needs an API key.",
+        )
+    if model and svc.settings.review_models and model not in svc.settings.review_models:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Model '{model}' is not allowed. Use one of: {', '.join(svc.settings.review_models)}.",
+        )
+    provider_name = provider or svc.settings.review_provider
     if not svc.providers.exists(provider_name):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -202,7 +234,7 @@ async def review(
     else:
         document = read_text(text or "", selected.input)
     llm = svc.providers.get(provider_name)
-    result = await call_ai(lambda: review_document(selected, document, llm, model=(model or "").strip() or None))
+    result = await call_ai(lambda: review_document(selected, document, llm, model=model or None))
     return ReviewResult(**result)
 
 

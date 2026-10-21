@@ -4,7 +4,7 @@
 [![Deploy](https://github.com/jussipalanen/jussi-aibot/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/jussipalanen/jussi-aibot/actions/workflows/deploy.yml)
 ![Version](https://img.shields.io/badge/version-2.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.137-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.156-009688?logo=fastapi&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
 ![Security](https://img.shields.io/badge/security-bandit%20%7C%20pip--audit%20%7C%20trivy-success)
@@ -78,7 +78,7 @@ All endpoints are listed with examples in [`/docs`](http://localhost:8080/docs).
 | `POST` | `/v1/review` | Review a document against a rubric |
 | `GET` | `/v1/providers` | Which AI providers have credentials (deployment check) |
 | `GET` | `/health` | Health check (no AI calls) |
-| `GET` | `/version` | App and runtime versions |
+| `GET` | `/version` | App version |
 | `POST` | `/ai/chat`, `/ai/review` | Legacy endpoints, kept for existing frontends |
 
 Send your key from servers as `Authorization: Bearer <key>`. Browser clients listed in the clients config are recognised by their origin instead (see **Security**).
@@ -137,7 +137,7 @@ curl -X POST http://localhost:8080/v1/review \
   -F "text=Hei, haen backend-kehittäjän tehtävää..."
 ```
 
-Optional form fields: `provider` (defaults to `REVIEW_PROVIDER`) and `model`.
+Optional form fields: `provider` (defaults to `REVIEW_PROVIDER`) and `model`. Only clients with an API key may set them (`403` otherwise), so keyless browser clients and the demo can't run other models on your credentials. Set `REVIEW_MODELS` to limit which models may be chosen.
 
 ### Code review
 
@@ -222,7 +222,7 @@ Accepted files: `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.java`,
 | `400` | Bad input: unsupported or unreadable file, unknown provider |
 | `401` / `403` | Missing or wrong key / origin not allowed |
 | `404` | Unknown agent or rubric, or not allowed for your client |
-| `413` | File too large (`MAX_UPLOAD_MB`, default 50) |
+| `413` | File too large (`MAX_UPLOAD_MB`, default 10) |
 | `429` | Rate limit exceeded; see the `Retry-After` header |
 | `502` | The AI provider or a backend failed |
 | `503` | A provider or data source is not configured |
@@ -259,7 +259,7 @@ system_prompt: |
 
 auth:
   shop:
-    type: header                 # none | bearer | header | login
+    type: header                 # none | bearer | header | login | user
     header: X-API-Key
     value: ${SHOP_API_KEY}
 
@@ -298,6 +298,7 @@ tools:
 | `tools[].http.paginate` | Fetch every page (`page_param`, `limit_param`, `page_size`, `data_field`, `total_pages_field`, `max_pages`) |
 | `tools[].rag` | Rank a list result by meaning: `data_field`, `top_k`, `fields` to embed |
 | `auth.<name>.type: login` | POST `body` to `login_url`, read `token_field`, send as bearer token, log in again after a 401 |
+| `auth.<name>.type: user` | Forward the signed-in end user's own token, sent by the caller in the `X-User-Token` header, as a bearer token. Without it the tool tells the model the user must sign in. Use it for anything personal (orders, bookings): a shared `login` account would let every chat user read every customer's data |
 | `context` | JSON from a URL rendered into the system prompt (e.g. a CV or FAQ), cached for `ttl` seconds; `asset_base_url` + `asset_fields` turn relative image paths into full URLs |
 | `embedding` | `provider` and `model` for RAG (defaults to the chat provider, or Gemini) |
 | `max_steps`, `history_limit`, `temperature` | Loop and generation limits |
@@ -443,6 +444,8 @@ Requests from the service's own pages (the review demo) are never rejected for t
 
 The `Origin` header can be faked by scripts, so browser-only clients are best for low-risk agents with tight rate limits. Keep keys on servers, never in browser JavaScript.
 
+Agent replies can contain HTML (the JussiSpace agent writes property cards), and that HTML is built from backend data and from what users type. A frontend that renders replies as HTML must sanitize them first, e.g. with [DOMPurify](https://github.com/cure53/DOMPurify), or a prompt injection becomes cross-site scripting.
+
 ### Single-key setup
 
 Without a clients file, `AI_SECRET_KEY` and `ALLOWED_ORIGINS` define one client, as before. Server-to-server calls with the key no longer need an `Origin` header. With neither set, the API is open (local development).
@@ -477,7 +480,6 @@ Create one in [Google AI Studio](https://aistudio.google.com/apikey). No Google 
    | Variable | Value |
    |---|---|
    | `GEMINI_API_KEY` | Your key from step 1 |
-   | `AGENT_EMAIL`, `AGENT_PASSWORD` | JussiSpace agent login |
    | `JUSSIMATIC_CV_API_URL` | CV API URL (full URL with its `code` parameter) |
    | `AI_SECRET_KEY` | A long random key: `openssl rand -hex 32` |
    | `ALLOWED_ORIGINS` | Your frontends, comma-separated, e.g. `https://jussimatic.com,https://jussispace.com` |
@@ -540,7 +542,7 @@ The provider accepts only this repository's `main` branch. Run the workflow by h
 ### What every deploy sets
 
 - **Variables:** exactly those in [`cloud-run.env.yaml`](cloud-run.env.yaml). A variable removed there is removed from the service. Never put secrets in it; the file is public.
-- **Secret:** `GEMINI_API_KEY` from Secret Manager, as `jussi-ai-platform-gemini-api-key` (secret names start with `jussi-ai-platform-`, because secrets are shared by the whole project). A deploy fails until it exists: `./dev cloud-env secret GEMINI_API_KEY` (`./dev deploy` and `cloud-env apply` check this first). To add another secret, for example `AI_SECRET_KEY` for server-to-server keys or `AGENT_EMAIL` and `AGENT_PASSWORD` for the JussiSpace agent's login, run `./dev cloud-env secret KEY` and list it in `SECRETS` in `deploy.yml` and `CLOUD_RUN_SECRETS` in `dev`.
+- **Secret:** `GEMINI_API_KEY` from Secret Manager, as `jussi-ai-platform-gemini-api-key` (secret names start with `jussi-ai-platform-`, because secrets are shared by the whole project). A deploy fails until it exists: `./dev cloud-env secret GEMINI_API_KEY` (`./dev deploy` and `cloud-env apply` check this first). To add another secret, for example `AI_SECRET_KEY` for server-to-server keys, run `./dev cloud-env secret KEY` and list it in `SECRETS` in `deploy.yml` and `CLOUD_RUN_SECRETS` in `dev`.
 - **Scaling for 24/7 at low cost:** exactly one instance (`--min-instances=1 --max-instances=1`), so there are no cold starts and the in-memory caches and rate limits are shared by all requests. CPU is allocated only while a request is served (`--cpu-throttling`), so the idle time is billed at Cloud Run's much lower idle rate. 1 vCPU and 512 MiB. Change `SCALING` in `deploy.yml` and `CLOUD_RUN_SCALING` in `dev` together.
 
 ### By hand
@@ -611,13 +613,13 @@ See `.env.example` for a commented template.
 | `AGENT_VERTEX_MODEL` | `gemini-3.5-flash-lite` | Default model for the shipped agents |
 | `JUSSISPACE_VERTEX_MODEL`, `JUSSIMATIC_CV_VERTEX_MODEL` | — | Per-agent model overrides |
 | `JUSSISPACE_API_URL`, `JUSSISPACE_FRONTEND_URL` | JussiSpace URLs | JussiSpace backend and links in answers |
-| `AGENT_EMAIL`, `AGENT_PASSWORD` | — | JussiSpace agent login |
 | `JUSSIMATIC_CV_API_URL` | — | CV JSON for the CV agent |
 | `JUSSILOG_STORAGE_BASE_URL` | — | Base URL for relative CV image paths |
 | `REVIEW_PROVIDER` | `gemini` | Default provider for `/v1/review` |
+| `REVIEW_MODELS` | — | Models a client with a key may choose for `/v1/review`, comma-separated; empty = any |
 | `DEFAULT_PROVIDER` | `default` | Default provider for legacy `/ai/review` |
 | `VERTEX_PROMPT_MAX_CHARS`, `PUTER_PROMPT_MAX_CHARS` | `6000` | Max document characters sent (0 = all) |
-| `MAX_UPLOAD_MB` | `50` | Upload size limit |
+| `MAX_UPLOAD_MB` | `10` | Upload size limit |
 | `PUTER_API_KEY`, `PUTER_MODEL`, `PUTER_DRIVER` | —, `gpt-4o-mini`, `openai-completion` | Puter AI |
 | `<NAME>_API_KEY`, `<NAME>_MODEL`, `<NAME>_BASE_URL`, `<NAME>_EMBEDDING_MODEL` | — | OpenAI-compatible providers |
 | `DISABLE_LOCAL_MODEL` | `false` | Turn off the local model |

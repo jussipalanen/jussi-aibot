@@ -29,7 +29,7 @@ RUN pip install -r requirements.txt
 
 # Optional ML dependencies to reduce default image size and build time.
 RUN if [ "$INCLUDE_ML_DEPS" = "1" ]; then \
-            pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 && \
+            pip install --index-url https://download.pytorch.org/whl/cpu torch==2.14.1 && \
             pip install -r requirements-ml.txt; \
         fi
 

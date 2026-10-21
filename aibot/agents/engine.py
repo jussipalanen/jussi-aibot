@@ -82,8 +82,17 @@ class Agent:
             parts.append(f"{source.config.title}:\n{await source.text(self._http())}")
         return "\n\n".join(parts)
 
-    async def chat(self, message: str, language: str | None = None, history: list[ChatTurn] | None = None) -> str:
-        """Answer one user message, calling tools as needed."""
+    async def chat(
+        self,
+        message: str,
+        language: str | None = None,
+        history: list[ChatTurn] | None = None,
+        user_token: str = "",
+    ) -> str:
+        """Answer one user message, calling tools as needed.
+
+        `user_token` is the end user's own backend token, used by tools with `auth` type `user`.
+        """
         provider = self._provider()
         system = await self.system_prompt(language)
         limit = self.config.history_limit
@@ -112,7 +121,7 @@ class Agent:
                 raw=response.raw_message,
             ))
             for call in response.tool_calls:
-                result = await self._run_tool(call.name, call.arguments, message, provider)
+                result = await self._run_tool(call.name, call.arguments, message, provider, user_token)
                 messages.append(Message(
                     role="tool",
                     content=self._serialize(call.name, result),
@@ -123,11 +132,13 @@ class Agent:
         logger.warning("Agent %s reached max_steps without an answer", self.config.id)
         return FALLBACK_REPLY
 
-    async def _run_tool(self, name: str, arguments: dict[str, Any], query: str, provider: LLMProvider) -> Any:
+    async def _run_tool(
+        self, name: str, arguments: dict[str, Any], query: str, provider: LLMProvider, user_token: str = "",
+    ) -> Any:
         tool = self._tools.get(name)
         if tool is None:
             return {"error": f"unknown tool '{name}'"}
-        result = await tool.call(arguments, self._http())
+        result = await tool.call(arguments, self._http(), user_token)
         if tool.config.rag:
             result = await self._rank(tool.config, result, query, provider)
         return result

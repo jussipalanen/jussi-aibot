@@ -23,9 +23,12 @@ class AuthConfig(_Strict):
     - `header`: static header, e.g. `X-API-Key: <value>`
     - `login`: POST `body` to `login_url`, read the token from `token_field`,
       send it as a bearer token, and log in again after a 401
+    - `user`: the signed-in end user's own token, sent by the caller in the
+      `X-User-Token` header and forwarded as a bearer token, so the backend only
+      shows that user's data. Without it the tool tells the model the user must sign in.
     """
 
-    type: Literal["none", "bearer", "header", "login"] = "none"
+    type: Literal["none", "bearer", "header", "login", "user"] = "none"
     token: str = ""
     header: str = "Authorization"
     value: str = ""

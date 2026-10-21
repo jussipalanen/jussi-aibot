@@ -28,6 +28,20 @@ Google Cloud Run deployment with automatic deploys from GitHub, because the Rend
 - All chatbots and reviews use one flash-lite model through the AI Studio key (`gemini` provider), so they run on its free tier; the Jussimatic CV chat used `gemini-2.5-flash`, and `DEFAULT_PROVIDER` is `gemini` instead of its alias `vertex_ai`
 - PR checks no longer run on their own for pushes to `main`; the deploy workflow runs them first
 - `dev` runs with bash
+- FastAPI 0.156.6 (was 0.137.0), uvicorn 0.54.0 (was 0.49.0), torch 2.14.1 for the optional ML image (was 2.5.1), and `actions/setup-python@v7` in the PR checks
+- `MAX_UPLOAD_MB` defaults to 10 (was 50)
+- `/version` shows only the app version; the Python, FastAPI, torch and platform versions are gone
+- The Postman collection is regenerated from the current API
+
+### Security
+
+- The JussiSpace agent no longer reads orders with a shared service account, which let anyone who could chat read every customer's orders. New `auth` type `user` forwards the end user's own token from the `X-User-Token` header (on `POST /v1/agents/{id}/chat` and `/ai/chat`); without it, order tools tell the agent to ask the user to sign in. `list_orders` no longer takes `userId`, and `AGENT_EMAIL` and `AGENT_PASSWORD` are no longer used
+- Only clients with an API key may choose the review `provider` or `model` (`403` otherwise), so keyless browser clients and the demo can't run other models on the service's credentials. New `REVIEW_MODELS` limits the models that may be chosen
+- Earlier chat messages in `history` are limited to 8 000 characters each, and the legacy `/ai/chat` gets the same limits as `/v1` (message length, at most 100 history items)
+- Uploads: only the first 50 PDF pages are read, DOCX files that unpack to over 100 MB are refused, and `antiword` stops after 30 seconds
+- AI provider errors and unexpected failures are logged in full but answered with a short message, so quotas, project ids and internal URLs are not shown to callers
+- The PR checks no longer ignore CVE-2026-4539: pygments 2.21.0 fixes it
+- Docs: frontends must sanitize agent replies before rendering them as HTML
 
 ### Removed
 

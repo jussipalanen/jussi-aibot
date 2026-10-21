@@ -1,12 +1,13 @@
 """
 Shared request dependencies and error mapping.
 """
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Literal, TypeVar
+from typing import Annotated, Literal, TypeVar
 
 import httpx
-from fastapi import Depends, HTTPException, Request, UploadFile, status
+from fastapi import Depends, Header, HTTPException, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.concurrency import run_in_threadpool
 
@@ -29,9 +30,25 @@ from aibot.review.rubrics import Rubric
 from aibot.security import Client, ClientRegistry, RateLimiter
 from aibot.settings import Settings
 
+logger = logging.getLogger("uvicorn.error")
+
 T = TypeVar("T")
 
 MAX_TEXT_CHARS = 100_000
+
+# Longest chat message, and longest earlier message in `history`.
+MAX_MESSAGE_CHARS = 8000
+
+# The end user's own backend token, forwarded by tools with `auth` type `user`.
+UserToken = Annotated[
+    str | None,
+    Header(
+        alias="X-User-Token",
+        max_length=4096,
+        description="The signed-in user's own token for the agent's backend. "
+                    "Needed by tools that show the user's own data, such as orders.",
+    ),
+]
 
 MAX_CODE_FILES = 20
 
@@ -86,7 +103,11 @@ async def call_ai(func: Callable[[], Awaitable[T]], *, error_prefix: str = "") -
     except ProviderError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"{error_prefix}{exc}") from exc
+        # The message can hold internal details (URLs, ids), so it goes to the log only.
+        logger.exception("AI call failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"{error_prefix}internal error",
+        ) from exc
 
 
 async def read_document(file: UploadFile, max_bytes: int) -> str:
