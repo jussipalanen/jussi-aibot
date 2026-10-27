@@ -30,7 +30,7 @@ env:
   # Always on at the lowest cost: one instance that never scales to zero or out, and
   # CPU only while serving requests, so the idle time is billed at the idle rate.
   # Keep in step with the dev script.
-  SCALING: --min-instances=1 --max-instances=1 --cpu=1 --memory=512Mi --cpu-throttling --cpu-boost --concurrency=80 --timeout=300
+  SCALING: --min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --cpu-throttling --cpu-boost --concurrency=80 --timeout=300
 
 jobs:
   ci:
