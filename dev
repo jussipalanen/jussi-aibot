@@ -24,7 +24,7 @@ SECRET_PREFIX="jussi-ai-platform-"
 # The service's variables, secret references and scaling, as deploy.yml sets them.
 CLOUD_RUN_ENV_FILE="${PROJECT_DIR}/cloud-run.env.yaml"
 CLOUD_RUN_SECRETS="GEMINI_API_KEY=jussi-ai-platform-gemini-api-key:latest"
-CLOUD_RUN_SCALING=(--min-instances=1 --max-instances=1 --cpu=1 --memory=512Mi --cpu-throttling --cpu-boost --concurrency=80 --timeout=300)
+CLOUD_RUN_SCALING=(--min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --cpu-throttling --cpu-boost --concurrency=80 --timeout=300)
 
 # Changes made by hand last only until the next deploy.
 warn_env_file() {
