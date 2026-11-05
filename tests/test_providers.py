@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import pytest
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from aibot.llm import Message, ProviderError, ProviderNotConfigured, ProviderRegistry, ToolCall, ToolSpec
@@ -25,10 +26,15 @@ class FakeGeminiModels:
 
     async def generate_content(self, **kwargs: Any) -> Any:
         self.requests.append(kwargs)
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
     async def embed_content(self, **kwargs: Any) -> Any:
         self.requests.append(kwargs)
+        if self.responses and isinstance(self.responses[0], Exception):
+            raise self.responses.pop(0)
         return SimpleNamespace(embeddings=[SimpleNamespace(values=[float(len(t))]) for t in kwargs["contents"]])
 
 
@@ -109,6 +115,47 @@ async def test_gemini_embeddings_in_batches() -> None:
     assert vectors == [[1.0], [2.0], [3.0]]
     assert len(models.requests) == 2
     assert models.requests[0]["config"].task_type == "RETRIEVAL_QUERY"
+
+
+def api_error(code: int) -> genai_errors.APIError:
+    status = {429: "RESOURCE_EXHAUSTED", 503: "UNAVAILABLE"}.get(code, "ERROR")
+    error_class = genai_errors.ServerError if code >= 500 else genai_errors.ClientError
+    return error_class(code, {"error": {"code": code, "message": "high demand", "status": status}})
+
+
+async def test_gemini_retries_temporary_server_errors() -> None:
+    provider, models = gemini_with([api_error(503), gemini_response(types.Part(text="ok"))], retry_delay=0)
+    assert (await provider.generate([Message("user", "hi")])).text == "ok"
+    assert len(models.requests) == 2
+
+
+async def test_gemini_gives_up_after_the_retries() -> None:
+    provider, models = gemini_with([api_error(503), api_error(503), api_error(503)], retries=2, retry_delay=0)
+    with pytest.raises(ProviderError, match="Gemini request failed"):
+        await provider.generate([Message("user", "hi")])
+    assert len(models.requests) == 3
+
+
+@pytest.mark.parametrize("code", [400, 429])
+async def test_gemini_does_not_retry_client_or_quota_errors(code: int) -> None:
+    provider, models = gemini_with([api_error(code), gemini_response(types.Part(text="ok"))], retry_delay=0)
+    with pytest.raises(ProviderError):
+        await provider.generate([Message("user", "hi")])
+    assert len(models.requests) == 1
+
+
+async def test_gemini_retry_can_be_turned_off_and_covers_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider, models = gemini_with([api_error(503), gemini_response(types.Part(text="ok"))], retries=0, retry_delay=0)
+    with pytest.raises(ProviderError):
+        await provider.generate([Message("user", "hi")])
+    assert len(models.requests) == 1
+
+    provider, models = gemini_with([api_error(504)], retry_delay=0)
+    assert await provider.embed(["a"]) == [[1.0]]
+    assert len(models.requests) == 2
+
+    monkeypatch.setenv("GEMINI_RETRIES", "3")
+    assert GeminiProvider.from_env().retries == 3
 
 
 def openai_provider(handler: Any, **kwargs: Any) -> OpenAICompatProvider:

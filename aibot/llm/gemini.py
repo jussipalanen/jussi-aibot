@@ -9,7 +9,8 @@ Authentication, in order of preference:
 """
 import asyncio
 import logging
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 from aibot.llm.base import (
     EmbeddingTask,
@@ -28,6 +29,17 @@ logger = logging.getLogger(__name__)
 # Prefix for tool call ids we generate when the API does not return one.
 _LOCAL_ID_PREFIX = "gemini-call-"
 _EMBED_CONCURRENCY = 8
+# Temporary server-side failures, e.g. 503 "This model is currently experiencing high demand".
+# Quota (429) and request errors (4xx) are not retried: waiting a moment would not fix them.
+_RETRY_STATUS_CODES = frozenset({500, 503, 504})
+
+T = TypeVar("T")
+
+
+def _is_transient(exc: Exception) -> bool:
+    """True for google-genai API errors with a retryable HTTP status."""
+    code = getattr(exc, "code", None)
+    return isinstance(code, int) and code in _RETRY_STATUS_CODES
 
 
 class GeminiProvider(LLMProvider):
@@ -44,6 +56,8 @@ class GeminiProvider(LLMProvider):
         default_model: str = "gemini-3.5-flash-lite",
         embedding_model: str = "gemini-embedding-001",
         embed_batch_size: int | None = None,
+        retries: int = 1,
+        retry_delay: float = 2.0,
     ) -> None:
         self.api_key = api_key
         self.project = project
@@ -51,6 +65,8 @@ class GeminiProvider(LLMProvider):
         self.default_model = default_model
         self.embedding_model = embedding_model
         self._embed_batch_size = embed_batch_size
+        self.retries = max(0, retries)
+        self.retry_delay = retry_delay
         self._client: Any = None
 
     @classmethod
@@ -64,6 +80,7 @@ class GeminiProvider(LLMProvider):
             default_model=env("GEMINI_MODEL", env("VERTEX_MODEL", "gemini-3.5-flash-lite")),
             embedding_model=env("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001"),
             embed_batch_size=batch_size or None,
+            retries=env_int("GEMINI_RETRIES", 1),
         )
 
     @property
@@ -100,6 +117,19 @@ class GeminiProvider(LLMProvider):
                 self._client = genai.Client(vertexai=True, project=self.project, location=self.location)
         return self._client
 
+    async def _with_retry(self, call: Callable[[], Awaitable[T]]) -> T:
+        """Run an API call, retrying temporary server errors with a growing pause."""
+        for attempt in range(self.retries + 1):
+            try:
+                return await call()
+            except Exception as exc:
+                if attempt >= self.retries or not _is_transient(exc):
+                    raise
+                delay = self.retry_delay * (attempt + 1)
+                logger.info("Gemini temporarily unavailable (HTTP %s), retrying in %.1f s", exc.code, delay)  # type: ignore[attr-defined]
+                await asyncio.sleep(delay)
+        raise AssertionError("unreachable")
+
     async def generate(
         self,
         messages: list[Message],
@@ -131,11 +161,13 @@ class GeminiProvider(LLMProvider):
             ])]
 
         try:
-            response = await client.aio.models.generate_content(
+            contents = _to_contents(messages)
+            config = types.GenerateContentConfig(**config_args)
+            response = await self._with_retry(lambda: client.aio.models.generate_content(
                 model=model or self.default_model,
-                contents=_to_contents(messages),
-                config=types.GenerateContentConfig(**config_args),
-            )
+                contents=contents,
+                config=config,
+            ))
         except ProviderNotConfigured:
             raise
         except Exception as exc:
@@ -185,11 +217,11 @@ class GeminiProvider(LLMProvider):
 
         async def embed_batch(batch: list[str]) -> list[list[float]]:
             async with semaphore:
-                response = await client.aio.models.embed_content(
+                response = await self._with_retry(lambda: client.aio.models.embed_content(
                     model=model or self.embedding_model,
                     contents=batch,
                     config=config,
-                )
+                ))
             return [list(item.values or []) for item in response.embeddings or []]
 
         try:
