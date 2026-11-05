@@ -1,0 +1,22 @@
+# API clients of the Cloud Run service (CLIENTS_FILE in cloud-run.env.yaml).
+#
+# This file is public, so it holds only SHA-256 hashes of keys, never keys. A hash of a
+# random 256-bit key cannot be turned back into the key. The keys themselves live only in
+# the callers' server-side configuration.
+#
+# To add or rotate a key: generate one (openssl rand -hex 32), store it in the caller's
+# server-side settings, put its hash here
+#   python -c "import hashlib,sys;print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" <key>
+# and merge; the GitHub deploy applies it.
+clients:
+  # The demo frontend (browser, no key). Before this file existed, it was ALLOWED_ORIGINS.
+  - id: demo-web
+    origins: [https://jussiai-platform-demo.jussialanen.com]
+
+  # JalaCampus AI backend: POST /v1/grounded-answer only (docs/grounded-answer-plan.md).
+  - id: jalacampus-backend
+    key_sha256: 5c61d5bfed954fb3f14f71c12e1eb3225d46055597d0643b859e12f90fbb7ac6
+    agents: []
+    rubrics: []
+    grounded_answer: true
+    rate_limit: 300/day
