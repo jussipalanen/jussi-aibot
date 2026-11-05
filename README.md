@@ -76,6 +76,7 @@ All endpoints are listed with examples in [`/docs`](http://localhost:8080/docs).
 | `POST` | `/v1/agents/{agent_id}/chat` | Chat with an agent |
 | `GET` | `/v1/review/rubrics` | Review rubrics you may use |
 | `POST` | `/v1/review` | Review a document against a rubric |
+| `POST` | `/v1/grounded-answer` | Finnish answer written only from passages you send, with checked citations |
 | `GET` | `/v1/providers` | Which AI providers have credentials (deployment check) |
 | `GET` | `/health` | Health check (no AI calls) |
 | `GET` | `/version` | App version |
@@ -214,6 +215,29 @@ The service keeps the verdicts consistent: the risk is never lower than the most
 Accepted files: `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.java`, `.kt`, `.scala`, `.go`, `.rs`, `.c`, `.h`, `.cpp`, `.hpp`, `.cs`, `.php`, `.rb`, `.swift`, `.dart`, `.lua`, `.r`, `.sql`, `.sh`, `.ps1`, `.html`, `.css`, `.scss`, `.json`, `.yaml`, `.toml`, `.xml`, `.tf`, `Dockerfile`, `Makefile` and more. Files must be UTF-8 text. Up to 60 000 characters are reviewed per request.
 
 **Language detection** (`aibot/review/languages.py`): a file's language comes from its name (`EXTENSION_LANGUAGES`); pasted code is matched against weighted regular expressions (`LANGUAGE_RULES`) for Python, JavaScript, TypeScript, Java, Kotlin, C#, C, C++, Go, Rust, PHP, Ruby, Swift, SQL, Shell, HTML, CSS, JSON, YAML and Dockerfile. The code review page runs the same rules in the browser, so the language shown while typing matches the result. To support a new language, add its extension and, optionally, a rule. Rules run on untrusted input, so keep them within one line (`[ \t]` rather than `\s`) and avoid nested repeats; `tests/test_code_review.py` checks that hostile input stays fast.
+
+### Grounded answers
+
+`POST /v1/grounded-answer` writes a short Finnish answer using **only** the passages in the request, for callers that do their own retrieval (built for [JalaCampus AI](https://github.com/jussipalanen/jalacampus-ai); design in [`docs/grounded-answer-plan.md`](docs/grounded-answer-plan.md)).
+
+```bash
+curl -X POST http://localhost:8080/v1/grounded-answer \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"question": "Milloin kirjasto on auki?",
+       "passages": [{"id": "kirjasto-0", "source": "kirjasto.txt",
+                     "text": "Kampuskirjasto on avoinna arkisin kello 8–20."}]}'
+```
+
+```json
+{"status": "answered", "answer": "Kirjasto on auki arkisin kello 8–20 [1].", "citations": ["kirjasto-0"]}
+```
+
+- **Citations are request ids:** they are always ids from `passages`. The model sees only the numbers `[1]…[n]`, and they are mapped back afterwards. `[n]` in `answer` is the nth item of `citations`.
+- **`no_evidence`:** the reply is `"status": "no_evidence"` with a fixed Finnish sentence and no citations. That happens when the passages don't answer the question, when no passages are sent (no model call), or when the model's answer has no valid citation.
+- **Limits:** `question` 1–500 characters, up to 8 passages of up to 2,000 characters each, unique ids `[A-Za-z0-9_-]{1,128}`, and `language` `fi`. Anything else returns `422`.
+- **Untrusted text:** passage text is treated as untrusted data. Its `<`/`>` are escaped, and instructions inside it are ignored.
+- **Access:** server-to-server only. The client needs `grounded_answer: true` in `clients.yaml` and a key; a keyless browser client with it fails at startup. With the single-key setup it works with `AI_SECRET_KEY`. The rate limit scope is `grounded-answer`.
+- **Model:** `GROUNDED_ANSWER_PROVIDER` (default `REVIEW_PROVIDER`), temperature 0, JSON output, and one retry when the output is malformed (`502` after that).
 
 ### Errors
 
@@ -617,6 +641,7 @@ See `.env.example` for a commented template.
 | `JUSSILOG_STORAGE_BASE_URL` | — | Base URL for relative CV image paths |
 | `REVIEW_PROVIDER` | `gemini` | Default provider for `/v1/review` |
 | `REVIEW_MODELS` | — | Models a client with a key may choose for `/v1/review`, comma-separated; empty = any |
+| `GROUNDED_ANSWER_PROVIDER` | `REVIEW_PROVIDER` | Provider for `/v1/grounded-answer` |
 | `DEFAULT_PROVIDER` | `default` | Default provider for legacy `/ai/review` |
 | `VERTEX_PROMPT_MAX_CHARS`, `PUTER_PROMPT_MAX_CHARS` | `6000` | Max document characters sent (0 = all) |
 | `MAX_UPLOAD_MB` | `10` | Upload size limit |
