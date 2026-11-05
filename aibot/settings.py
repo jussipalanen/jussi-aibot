@@ -50,6 +50,7 @@ class Settings:
     max_upload_bytes: int
     review_provider: str
     review_models: tuple[str, ...]
+    grounded_answer_provider: str
     legacy_review_provider: str
     legacy_puter_prompt_max_chars: int
     legacy_vertex_prompt_max_chars: int
@@ -94,6 +95,7 @@ class Settings:
             max_upload_bytes=env_int("MAX_UPLOAD_MB", 10) * 1024 * 1024,
             review_provider=env("REVIEW_PROVIDER", "gemini").lower(),
             review_models=tuple(env_list("REVIEW_MODELS")),
+            grounded_answer_provider=env("GROUNDED_ANSWER_PROVIDER", env("REVIEW_PROVIDER", "gemini")).lower(),
             legacy_review_provider=legacy_provider,
             legacy_puter_prompt_max_chars=env_int("PUTER_PROMPT_MAX_CHARS", 6000),
             legacy_vertex_prompt_max_chars=env_int("VERTEX_PROMPT_MAX_CHARS", 6000),

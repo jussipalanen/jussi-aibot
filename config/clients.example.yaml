@@ -11,6 +11,8 @@
 #                     client: requests from these origins need no key. A client with
 #                     both must send the key, and the Origin (if any) must match.
 #   agents / rubrics  Ids it may use, or ["*"] for all (default).
+#   grounded_answer   true to allow POST /v1/grounded-answer (default false). Needs a key:
+#                     a keyless browser client with it fails at startup.
 #   rate_limit        e.g. 50/day, 10/hour. Defaults to DAILY_RATE_LIMIT.
 clients:
   - id: jussimatic-backend
@@ -18,6 +20,13 @@ clients:
     agents: [jussimatic-ai-cv-chat]
     rubrics: ["*"]
     rate_limit: 500/day
+
+  - id: jalacampus-backend          # server-to-server grounded answers
+    key: ${JALACAMPUS_API_KEY}
+    agents: []
+    rubrics: []
+    grounded_answer: true
+    rate_limit: 300/day
 
   - id: jussispace-web
     origins: [https://jussispace-production.lab.jussialanen.com, http://localhost:3000]

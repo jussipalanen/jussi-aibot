@@ -4,7 +4,7 @@ Version 1 of the platform API.
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Request, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from aibot.agents.engine import ChatTurn
 from aibot.api.deps import (
@@ -17,6 +17,7 @@ from aibot.api.deps import (
     require_client,
     services,
 )
+from aibot.grounded import Passage, answer_from_passages
 from aibot.review.rubrics import review_document
 from aibot.security import Client
 
@@ -100,6 +101,44 @@ class ReviewResult(BaseModel):
         None, description="Security risk and vulnerabilities, from rubrics with `input: code`")
     suggestions: list[CodeSuggestion] = Field(
         default_factory=list, description="Code changes, from rubrics with `input: code`; empty otherwise")
+
+
+class PassageIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$", description="The caller's stable passage id, returned in `citations`")
+    source: str = Field(min_length=1, max_length=255, description="Source label, e.g. a file name", examples=["kirjasto.txt"])
+    text: str = Field(min_length=1, max_length=2000, description="The passage text; treated as untrusted data")
+
+
+class GroundedAnswerBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=500, examples=["Milloin kampuskirjasto on auki?"])
+    language: Literal["fi"] = Field("fi", description="Answer language; only Finnish for now")
+    passages: list[PassageIn] = Field(
+        default_factory=list, max_length=8, description="Retrieved passages; empty means `no_evidence` without a model call")
+
+    @field_validator("question")
+    @classmethod
+    def _question_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("question must not be blank")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> "GroundedAnswerBody":
+        ids = [p.id for p in self.passages]
+        if len(ids) != len(set(ids)):
+            raise ValueError("passage ids must be unique")
+        return self
+
+
+class GroundedAnswerReply(BaseModel):
+    status: Literal["answered", "no_evidence"]
+    answer: str = Field(description="Finnish answer with `[n]` markers (1-based positions in `citations`), "
+                                     "or a fixed sentence for `no_evidence`")
+    citations: list[str] = Field(description="Passage ids from the request, in the order the answer cites them")
 
 
 class ProviderInfo(BaseModel):
@@ -236,6 +275,28 @@ async def review(
     llm = svc.providers.get(provider_name)
     result = await call_ai(lambda: review_document(selected, document, llm, model=model or None))
     return ReviewResult(**result)
+
+
+@router.post("/grounded-answer", tags=["Grounded answers"], summary="Answer from the given passages")
+async def grounded_answer(
+    request: Request,
+    body: GroundedAnswerBody,
+    client: Annotated[Client, Depends(require_client("grounded-answer"))],
+) -> GroundedAnswerReply:
+    """Write a short Finnish answer using only `passages`, citing them with `[n]` markers.
+
+    `citations` only ever holds ids from the request. When the passages don't answer the
+    question, or none are sent, the reply is `no_evidence` with a fixed Finnish sentence.
+    Server-to-server only: the client needs `grounded_answer: true` and an API key.
+    """
+    if not client.grounded_answer:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This client may not use grounded answers.")
+    svc = services(request)
+    provider_name = svc.settings.grounded_answer_provider
+    provider = svc.providers.get(provider_name) if svc.providers.exists(provider_name) else None
+    passages = [Passage(id=p.id, source=p.source, text=p.text) for p in body.passages]
+    result = await call_ai(lambda: answer_from_passages(body.question, passages, provider, client_id=client.id))
+    return GroundedAnswerReply(**result)
 
 
 @router.get("/providers", tags=["Providers"], summary="List AI providers")

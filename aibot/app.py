@@ -22,6 +22,7 @@ from aibot.settings import Settings
 OPENAPI_TAGS = [
     {"name": "Agents", "description": "Chat agents defined in `config/agents/*.yaml`."},
     {"name": "Review", "description": "Document reviews against rubrics in `config/rubrics/*.yaml`."},
+    {"name": "Grounded answers", "description": "Answers written only from passages the caller sends, with checked citations."},
     {"name": "Providers", "description": "Configured AI providers."},
     {"name": "Service", "description": "Home page, health and version."},
     {"name": "Legacy", "description": "Original endpoints, kept for existing frontends. Prefer `/v1`."},

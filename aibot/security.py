@@ -43,6 +43,8 @@ class ClientConfig(BaseModel):
     origins: list[str] = Field(default_factory=list)
     agents: list[str] = Field(default_factory=lambda: ["*"])
     rubrics: list[str] = Field(default_factory=lambda: ["*"])
+    # POST /v1/grounded-answer. Off by default; needs a key, so browser-only clients can't have it.
+    grounded_answer: bool = False
     rate_limit: str = ""
 
 
@@ -55,6 +57,7 @@ class Client:
     origins: frozenset[str] = frozenset()
     agents: frozenset[str] = frozenset({"*"})
     rubrics: frozenset[str] = frozenset({"*"})
+    grounded_answer: bool = False
     rate_limit: str = ""
 
     def can_use_agent(self, agent_id: str) -> bool:
@@ -64,7 +67,8 @@ class Client:
         return "*" in self.rubrics or rubric_id in self.rubrics
 
 
-ANONYMOUS = Client(id="anonymous")
+# Open access (no clients configured) is for local development: everything is allowed.
+ANONYMOUS = Client(id="anonymous", grounded_answer=True)
 
 
 def _normalize_origin(origin: str) -> str:
@@ -91,12 +95,15 @@ def load_clients_file(path: Path) -> list[Client]:
             parse(config.rate_limit)
         if not key_hash and not config.origins:
             raise ValueError(f"Client '{config.id}' in {path.name} needs a key, key_sha256 or origins.")
+        if config.grounded_answer and not key_hash:
+            raise ValueError(f"Client '{config.id}' in {path.name}: grounded_answer needs a key (server-to-server only).")
         clients.append(Client(
             id=config.id,
             key_hash=key_hash,
             origins=frozenset(_normalize_origin(o) for o in config.origins),
             agents=frozenset(config.agents),
             rubrics=frozenset(config.rubrics),
+            grounded_answer=config.grounded_answer,
             rate_limit=config.rate_limit,
         ))
     ids = [client.id for client in clients]
@@ -127,6 +134,8 @@ class ClientRegistry:
                 id="default",
                 key_hash=hash_key(settings.ai_secret_key) if settings.ai_secret_key else "",
                 origins=frozenset(settings.allowed_origins),
+                # Only with a key: an origin-only setup would expose it to browsers.
+                grounded_answer=bool(settings.ai_secret_key),
             )], demo)
         return cls([], demo)
 
