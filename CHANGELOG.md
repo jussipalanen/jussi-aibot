@@ -57,6 +57,7 @@ Google Cloud Run deployment with automatic deploys from GitHub, because the Rend
 
 ### Fixed
 
+- Temporary Gemini server errors (HTTP 500, 503 "high demand", 504) are retried once after 2 s for chat, reviews, grounded answers and embeddings (`GEMINI_RETRIES`, default 1), instead of failing with 502 straight away.
 - Reviews and chatbots failed on new AI Studio keys ("Tekoälypalvelu ei saanut arviota valmiiksi"): Google no longer offers `gemini-2.5-flash-lite` to new users. The default model and the Cloud Run setting are now `gemini-3.5-flash-lite`
 
 ---

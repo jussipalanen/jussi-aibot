@@ -422,6 +422,7 @@ If both are set, the API key is used.
 | `GEMINI_MODEL` | `VERTEX_MODEL` or `gemini-3.5-flash-lite` | Default model for reviews |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | Embeddings for RAG |
 | `GEMINI_EMBED_BATCH_SIZE` | 100 (API key), 1 (Vertex AI) | Texts per embedding request |
+| `GEMINI_RETRIES` | 1 | Retries for temporary Gemini server errors (HTTP 500, 503 "high demand", 504), after 2 s, 4 s, …; `0` turns them off. Quota (429) and request errors are not retried |
 
 </details>
 
