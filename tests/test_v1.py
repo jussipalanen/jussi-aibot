@@ -1,6 +1,7 @@
 """
 The `/v1` endpoints, rubrics and shipped config files.
 """
+import re
 from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 from aibot.agents.registry import AgentRegistry
 from aibot.configfile import substitute_env
 from aibot.review.rubrics import load_rubrics
+from aibot.security import load_clients_file
 from aibot.settings import BASE_DIR
 from tests.conftest import FakeProvider
 
@@ -176,6 +178,20 @@ def test_shipped_agents_load() -> None:
     for name in ("get_order_status", "list_orders"):
         assert configs["jussispace"].auth[tools[name].http.auth].type == "user"
     assert "userId" not in tools["list_orders"].parameters["properties"]
+
+
+def test_cloud_run_clients_file() -> None:
+    """The Cloud Run clients file loads, holds only key hashes and is the one cloud-run.env.yaml uses."""
+    path = BASE_DIR / "config" / "clients.cloud-run.yaml"
+    clients = {c.id: c for c in load_clients_file(path)}
+    assert clients["demo-web"].origins == frozenset({"https://jussiai-platform-demo.jussialanen.com"})
+    assert not clients["demo-web"].key_hash and not clients["demo-web"].grounded_answer
+    backend = clients["jalacampus-backend"]
+    assert backend.grounded_answer and len(backend.key_hash) == 64
+    assert backend.agents == frozenset() and backend.rubrics == frozenset()
+    assert not re.search(r"^\s*key:", path.read_text(encoding="utf-8"), re.MULTILINE)  # hashes only, never keys
+    env = (BASE_DIR / "cloud-run.env.yaml").read_text(encoding="utf-8")
+    assert "CLIENTS_FILE: /app/config/clients.cloud-run.yaml" in env
 
 
 def test_shipped_rubrics_load() -> None:

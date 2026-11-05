@@ -12,6 +12,7 @@ Google Cloud Run deployment with automatic deploys from GitHub, because the Rend
 
 ### Added
 
+- Cloud Run clients are configured in `config/clients.cloud-run.yaml` (`CLIENTS_FILE`), which holds only key hashes. It adds the `jalacampus-backend` client (grounded answers only, `300/day`) and keeps the demo frontend's origin, which was `ALLOWED_ORIGINS`.
 - `POST /v1/grounded-answer` for JalaCampus AI (#33):
   - A Finnish answer written only from passages the caller sends.
   - The model cites passage numbers, which are mapped back to the caller's ids. Invalid numbers are dropped, and an answer without a valid citation becomes `no_evidence` with a fixed Finnish sentence.

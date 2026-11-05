@@ -566,6 +566,10 @@ The provider accepts only this repository's `main` branch. Run the workflow by h
 ### What every deploy sets
 
 - **Variables:** exactly those in [`cloud-run.env.yaml`](cloud-run.env.yaml). A variable removed there is removed from the service. Never put secrets in it; the file is public.
+- **Clients:** [`config/clients.cloud-run.yaml`](config/clients.cloud-run.yaml) (`CLIENTS_FILE`) lists the demo frontend's origin and the server clients, which hold only the SHA-256 **hashes** of their keys. That's safe in a public file because a random key can't be recovered from its hash. To add or rotate a server key:
+  1. Generate one with `openssl rand -hex 32` and keep it only in the caller's server-side settings.
+  2. Put its hash in the file.
+  3. Merge; the deploy applies it. No Secret Manager step is needed.
 - **Secret:** `GEMINI_API_KEY` from Secret Manager, as `jussi-ai-platform-gemini-api-key` (secret names start with `jussi-ai-platform-`, because secrets are shared by the whole project). A deploy fails until it exists: `./dev cloud-env secret GEMINI_API_KEY` (`./dev deploy` and `cloud-env apply` check this first). To add another secret, for example `AI_SECRET_KEY` for server-to-server keys, run `./dev cloud-env secret KEY` and list it in `SECRETS` in `deploy.yml` and `CLOUD_RUN_SECRETS` in `dev`.
 - **Scaling for 24/7 at low cost:** exactly one instance (`--min-instances=1 --max-instances=1`), so there are no cold starts and the in-memory caches and rate limits are shared by all requests. CPU is allocated only while a request is served (`--cpu-throttling`), so the idle time is billed at Cloud Run's much lower idle rate. 1 vCPU and 512 MiB. Change `SCALING` in `deploy.yml` and `CLOUD_RUN_SCALING` in `dev` together.
 
