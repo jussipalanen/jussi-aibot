@@ -189,6 +189,9 @@ def test_cloud_run_clients_file() -> None:
     backend = clients["jalacampus-backend"]
     assert backend.grounded_answer and len(backend.key_hash) == 64
     assert backend.agents == frozenset() and backend.rubrics == frozenset()
+    prod = clients["jalacampus-prod"]
+    assert prod.grounded_answer and len(prod.key_hash) == 64 and prod.key_hash != backend.key_hash
+    assert prod.agents == frozenset() and prod.rubrics == frozenset() and prod.rate_limit == "100/day"
     assert not re.search(r"^\s*key:", path.read_text(encoding="utf-8"), re.MULTILINE)  # hashes only, never keys
     env = (BASE_DIR / "cloud-run.env.yaml").read_text(encoding="utf-8")
     assert "CLIENTS_FILE: /app/config/clients.cloud-run.yaml" in env

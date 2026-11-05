@@ -12,6 +12,7 @@ Google Cloud Run deployment with automatic deploys from GitHub, because the Rend
 
 ### Added
 
+- `jalacampus-prod` client for the JalaCampus AI production deployment on Vercel: grounded answers only, `100/day`, with its own key so it can be revoked without affecting development.
 - Cloud Run clients are configured in `config/clients.cloud-run.yaml` (`CLIENTS_FILE`), which holds only key hashes. It adds the `jalacampus-backend` client (grounded answers only, `300/day`) and keeps the demo frontend's origin, which was `ALLOWED_ORIGINS`.
 - `POST /v1/grounded-answer` for JalaCampus AI (#33):
   - A Finnish answer written only from passages the caller sends.

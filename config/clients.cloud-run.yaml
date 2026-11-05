@@ -13,10 +13,19 @@ clients:
   - id: demo-web
     origins: [https://jussiai-platform-demo.jussialanen.com]
 
-  # JalaCampus AI backend: POST /v1/grounded-answer only (docs/grounded-answer-plan.md).
+  # JalaCampus AI for local development and evaluation: POST /v1/grounded-answer only
+  # (docs/grounded-answer-plan.md).
   - id: jalacampus-backend
     key_sha256: 5c61d5bfed954fb3f14f71c12e1eb3225d46055597d0643b859e12f90fbb7ac6
     agents: []
     rubrics: []
     grounded_answer: true
     rate_limit: 300/day
+
+  # JalaCampus AI production on Vercel: same permission, lower cap, revocable on its own.
+  - id: jalacampus-prod
+    key_sha256: 2b7a11665cfa5f15d10299b931fc666e87c7826728e32b130b5b6e7c5f468876
+    agents: []
+    rubrics: []
+    grounded_answer: true
+    rate_limit: 100/day
