@@ -11,8 +11,10 @@ WORKDIR /app
 
 ARG INCLUDE_ML_DEPS=0
 
-# Install system tool for legacy DOC extraction.
+# Apply Debian security updates (the base image can lag behind, e.g. zlib CVE-2026-76844),
+# then install the system tool for legacy DOC extraction.
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends antiword \
     && rm -rf /var/lib/apt/lists/*
 
