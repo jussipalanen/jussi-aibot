@@ -422,7 +422,11 @@ If both are set, the API key is used.
 | `GEMINI_MODEL` | `VERTEX_MODEL` or `gemini-3.5-flash-lite` | Default model for reviews |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | Embeddings for RAG |
 | `GEMINI_EMBED_BATCH_SIZE` | 100 (API key), 1 (Vertex AI) | Texts per embedding request |
-| `GEMINI_RETRIES` | 1 | Retries for temporary Gemini server errors (HTTP 500, 503 "high demand", 504), after 2 s, 4 s, …; `0` turns them off. Quota (429) and request errors are not retried |
+| `GEMINI_RETRIES` | 1 | Retries for timeouts and temporary Gemini server errors (HTTP 500, 503 "high demand", 504); `0` turns them off. Request errors are not retried, and quota (429) only when the retry uses the fallback model |
+| `GEMINI_TIMEOUT` | 15 | Seconds per Gemini attempt; a call that takes longer counts as a temporary error. `0` means no limit |
+| `GEMINI_FALLBACK_MODEL` | empty | Chat model for retries, e.g. `gemini-3.5-flash`; it has its own capacity and quota, so the retry starts at once. Empty: the same model after 2 s, 4 s, … Embeddings never switch model |
+
+Each Gemini call logs its model, duration and any retry at INFO (`LOG_LEVEL`), never the request content.
 
 </details>
 
