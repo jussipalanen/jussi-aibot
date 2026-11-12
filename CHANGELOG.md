@@ -57,6 +57,8 @@ Google Cloud Run deployment with automatic deploys from GitHub, because the Rend
 
 ### Fixed
 
+- Grounded answers could take over a minute (45 s and 71 s in production) because the Gemini call had no time limit. Each attempt now stops after `GEMINI_TIMEOUT` (15 s), and a timeout counts as a temporary error. With `GEMINI_FALLBACK_MODEL` the retry goes straight to another model, also on quota errors (429), since each model has its own capacity and quota. Cloud Run uses `gemini-3.5-flash` as the fallback.
+- The app's own INFO logs never reached the Cloud Run logs, so Gemini timings and retries were invisible. `main.py` now sends `aibot` logs to stderr at `LOG_LEVEL` (default INFO); they name the model and timing, never request content.
 - Temporary Gemini server errors (HTTP 500, 503 "high demand", 504) are retried once after 2 s for chat, reviews, grounded answers and embeddings (`GEMINI_RETRIES`, default 1), instead of failing with 502 straight away.
 - Reviews and chatbots failed on new AI Studio keys ("Tekoälypalvelu ei saanut arviota valmiiksi"): Google no longer offers `gemini-2.5-flash-lite` to new users. The default model and the Cloud Run setting are now `gemini-3.5-flash-lite`
 

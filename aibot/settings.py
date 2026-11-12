@@ -1,6 +1,7 @@
 """
 Application settings read from environment variables.
 """
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,9 +31,31 @@ def env_int(name: str, default: int) -> int:
     return int(value) if value else default
 
 
+def env_float(name: str, default: float) -> float:
+    """Return an environment variable parsed as a number."""
+    value = os.getenv(name, "").strip()
+    return float(value) if value else default
+
+
 def env_list(name: str) -> list[str]:
     """Return a comma-separated environment variable as a list of non-empty items."""
     return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
+
+
+def configure_logging() -> None:
+    """Print the app's own logs (the `aibot` loggers) to stderr at LOG_LEVEL, default INFO.
+
+    Uvicorn configures only its own loggers, so without this only warnings reached the
+    Cloud Run logs. App log messages never contain questions, passages or answers.
+    """
+    logger = logging.getLogger("aibot")
+    if logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(env("LOG_LEVEL", "INFO").upper())
+    logger.propagate = False
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ Authentication, in order of preference:
 """
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
@@ -22,7 +23,7 @@ from aibot.llm.base import (
     ToolCall,
     ToolSpec,
 )
-from aibot.settings import env, env_int
+from aibot.settings import env, env_float, env_int
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +31,29 @@ logger = logging.getLogger(__name__)
 _LOCAL_ID_PREFIX = "gemini-call-"
 _EMBED_CONCURRENCY = 8
 # Temporary server-side failures, e.g. 503 "This model is currently experiencing high demand".
-# Quota (429) and request errors (4xx) are not retried: waiting a moment would not fix them.
+# Request errors (4xx) are not retried: waiting a moment would not fix them.
 _RETRY_STATUS_CODES = frozenset({500, 503, 504})
+# Quota (429) is per model, so it is retried only when the next attempt uses another model.
+_QUOTA_STATUS = 429
 
 T = TypeVar("T")
 
 
-def _is_transient(exc: Exception) -> bool:
-    """True for google-genai API errors with a retryable HTTP status."""
+def _status(exc: Exception) -> int | None:
     code = getattr(exc, "code", None)
-    return isinstance(code, int) and code in _RETRY_STATUS_CODES
+    return code if isinstance(code, int) else None
+
+
+def _is_transient(exc: Exception, *, switching_model: bool = False) -> bool:
+    """True for a timeout or a google-genai API error that another attempt may fix."""
+    if isinstance(exc, TimeoutError):
+        return True
+    code = _status(exc)
+    return code in _RETRY_STATUS_CODES or (switching_model and code == _QUOTA_STATUS)
+
+
+def _reason(exc: Exception) -> str:
+    return "timed out" if isinstance(exc, TimeoutError) else f"failed with HTTP {_status(exc)}"
 
 
 class GeminiProvider(LLMProvider):
@@ -58,6 +72,8 @@ class GeminiProvider(LLMProvider):
         embed_batch_size: int | None = None,
         retries: int = 1,
         retry_delay: float = 2.0,
+        timeout: float = 15.0,
+        fallback_model: str = "",
     ) -> None:
         self.api_key = api_key
         self.project = project
@@ -67,6 +83,10 @@ class GeminiProvider(LLMProvider):
         self._embed_batch_size = embed_batch_size
         self.retries = max(0, retries)
         self.retry_delay = retry_delay
+        # Seconds per attempt; 0 means no limit. The SDK has none, and Gemini sometimes takes a minute.
+        self.timeout = max(0.0, timeout)
+        # Chat model for retries; it has its own capacity and quota. Empty: retry the same model.
+        self.fallback_model = fallback_model
         self._client: Any = None
 
     @classmethod
@@ -81,6 +101,8 @@ class GeminiProvider(LLMProvider):
             embedding_model=env("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001"),
             embed_batch_size=batch_size or None,
             retries=env_int("GEMINI_RETRIES", 1),
+            timeout=env_float("GEMINI_TIMEOUT", 15.0),
+            fallback_model=env("GEMINI_FALLBACK_MODEL"),
         )
 
     @property
@@ -117,17 +139,36 @@ class GeminiProvider(LLMProvider):
                 self._client = genai.Client(vertexai=True, project=self.project, location=self.location)
         return self._client
 
-    async def _with_retry(self, call: Callable[[], Awaitable[T]]) -> T:
-        """Run an API call, retrying temporary server errors with a growing pause."""
+    async def _with_retry(self, call: Callable[[str], Awaitable[T]], model: str, *, fallback: str = "") -> T:
+        """Run an API call with a time limit, retrying timeouts and temporary server errors.
+
+        Retries use `fallback` when it names another model, straight away; otherwise the same model
+        after a growing pause. Logs name the model and timing only, never the request content.
+        """
+        current = model
         for attempt in range(self.retries + 1):
+            started = time.monotonic()
             try:
-                return await call()
+                pending = call(current)
+                result = await (asyncio.wait_for(pending, self.timeout) if self.timeout else pending)
             except Exception as exc:
-                if attempt >= self.retries or not _is_transient(exc):
+                elapsed = (time.monotonic() - started) * 1000
+                following = fallback or current
+                switching = following != current
+                if attempt >= self.retries or not _is_transient(exc, switching_model=switching):
+                    logger.info("Gemini %s %s after %d ms", current, _reason(exc), elapsed)
                     raise
-                delay = self.retry_delay * (attempt + 1)
-                logger.info("Gemini temporarily unavailable (HTTP %s), retrying in %.1f s", exc.code, delay)  # type: ignore[attr-defined]
-                await asyncio.sleep(delay)
+                delay = 0.0 if switching else self.retry_delay * (attempt + 1)
+                logger.info(
+                    "Gemini %s %s after %d ms, retrying with %s in %.1f s",
+                    current, _reason(exc), elapsed, following, delay,
+                )
+                current = following
+                if delay:
+                    await asyncio.sleep(delay)
+                continue
+            logger.info("Gemini %s answered in %d ms", current, (time.monotonic() - started) * 1000)
+            return result
         raise AssertionError("unreachable")
 
     async def generate(
@@ -163,11 +204,11 @@ class GeminiProvider(LLMProvider):
         try:
             contents = _to_contents(messages)
             config = types.GenerateContentConfig(**config_args)
-            response = await self._with_retry(lambda: client.aio.models.generate_content(
-                model=model or self.default_model,
+            response = await self._with_retry(lambda name: client.aio.models.generate_content(
+                model=name,
                 contents=contents,
                 config=config,
-            ))
+            ), model or self.default_model, fallback=self.fallback_model)
         except ProviderNotConfigured:
             raise
         except Exception as exc:
@@ -217,11 +258,12 @@ class GeminiProvider(LLMProvider):
 
         async def embed_batch(batch: list[str]) -> list[list[float]]:
             async with semaphore:
-                response = await self._with_retry(lambda: client.aio.models.embed_content(
-                    model=model or self.embedding_model,
+                # No fallback: another embedding model would put vectors in a different space.
+                response = await self._with_retry(lambda name: client.aio.models.embed_content(
+                    model=name,
                     contents=batch,
                     config=config,
-                ))
+                ), model or self.embedding_model)
             return [list(item.values or []) for item in response.embeddings or []]
 
         try:

@@ -1,7 +1,9 @@
 """
 Provider adapters: message conversion and response parsing, without network calls.
 """
+import asyncio
 import json
+import logging
 from types import SimpleNamespace
 from typing import Any
 
@@ -13,10 +15,15 @@ from google.genai import types
 from aibot.llm import Message, ProviderError, ProviderNotConfigured, ProviderRegistry, ToolCall, ToolSpec
 from aibot.llm.gemini import GeminiProvider
 from aibot.llm.openai_compat import OpenAICompatProvider
+from aibot.settings import configure_logging
 
 pytestmark = pytest.mark.anyio
 
 SEARCH = ToolSpec("search", "Search", {"type": "object", "properties": {"q": {"type": "string"}}})
+# A fake response that never arrives in time, like a Gemini call stuck for a minute.
+SLOW = object()
+# Kept apart from asyncio.sleep, which tests replace to skip retry pauses.
+_real_sleep = asyncio.sleep
 
 
 class FakeGeminiModels:
@@ -27,12 +34,17 @@ class FakeGeminiModels:
     async def generate_content(self, **kwargs: Any) -> Any:
         self.requests.append(kwargs)
         response = self.responses.pop(0)
+        if response is SLOW:
+            await _real_sleep(60)
         if isinstance(response, Exception):
             raise response
         return response
 
     async def embed_content(self, **kwargs: Any) -> Any:
         self.requests.append(kwargs)
+        if self.responses and self.responses[0] is SLOW:
+            self.responses.pop(0)
+            await _real_sleep(60)
         if self.responses and isinstance(self.responses[0], Exception):
             raise self.responses.pop(0)
         return SimpleNamespace(embeddings=[SimpleNamespace(values=[float(len(t))]) for t in kwargs["contents"]])
@@ -156,6 +168,108 @@ async def test_gemini_retry_can_be_turned_off_and_covers_embeddings(monkeypatch:
 
     monkeypatch.setenv("GEMINI_RETRIES", "3")
     assert GeminiProvider.from_env().retries == 3
+
+
+async def test_gemini_times_out_a_stuck_call_and_retries_with_the_fallback_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pauses: list[float] = []
+
+    async def no_pause(delay: float) -> None:
+        pauses.append(delay)
+
+    provider, models = gemini_with(
+        [SLOW, gemini_response(types.Part(text="ok"))], timeout=0.05, fallback_model="backup", retry_delay=30,
+    )
+    monkeypatch.setattr("aibot.llm.gemini.asyncio.sleep", no_pause)
+    assert (await provider.generate([Message("user", "hi")])).text == "ok"
+    assert [r["model"] for r in models.requests] == ["gemini-3.5-flash-lite", "backup"]
+    assert pauses == []  # another model has its own capacity, so no reason to wait
+
+
+async def test_gemini_retries_the_same_model_after_a_pause_without_a_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    pauses: list[float] = []
+
+    async def no_pause(delay: float) -> None:
+        pauses.append(delay)
+
+    provider, models = gemini_with([api_error(503), gemini_response(types.Part(text="ok"))], retry_delay=2)
+    monkeypatch.setattr("aibot.llm.gemini.asyncio.sleep", no_pause)
+    assert (await provider.generate([Message("user", "hi")], model="custom")).text == "ok"
+    assert [r["model"] for r in models.requests] == ["custom", "custom"]
+    assert pauses == [2]
+
+
+async def test_gemini_gives_up_when_every_attempt_times_out() -> None:
+    provider, models = gemini_with([SLOW, SLOW], timeout=0.05, fallback_model="backup")
+    with pytest.raises(ProviderError, match="Gemini request failed"):
+        await provider.generate([Message("user", "hi")])
+    assert len(models.requests) == 2
+
+
+async def test_gemini_quota_error_is_retried_only_with_another_model() -> None:
+    provider, models = gemini_with([api_error(429), gemini_response(types.Part(text="ok"))], fallback_model="backup", retry_delay=0)
+    assert (await provider.generate([Message("user", "hi")])).text == "ok"
+    assert [r["model"] for r in models.requests] == ["gemini-3.5-flash-lite", "backup"]
+
+    # The fallback is the model already in use: the same quota, so no retry.
+    provider, models = gemini_with([api_error(429), gemini_response(types.Part(text="ok"))], fallback_model="backup", retry_delay=0)
+    with pytest.raises(ProviderError):
+        await provider.generate([Message("user", "hi")], model="backup")
+    assert len(models.requests) == 1
+
+
+async def test_gemini_embeddings_time_out_but_never_switch_model() -> None:
+    provider, models = gemini_with([SLOW], timeout=0.05, fallback_model="backup", retry_delay=0)
+    assert await provider.embed(["a"]) == [[1.0]]
+    assert [r["model"] for r in models.requests] == ["gemini-embedding-001", "gemini-embedding-001"]
+
+
+async def test_gemini_timeout_zero_means_no_limit() -> None:
+    provider, _ = gemini_with([gemini_response(types.Part(text="ok"))], timeout=0)
+    assert provider.timeout == 0
+    assert (await provider.generate([Message("user", "hi")])).text == "ok"
+
+
+def test_gemini_timeout_and_fallback_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_TIMEOUT", raising=False)
+    monkeypatch.delenv("GEMINI_FALLBACK_MODEL", raising=False)
+    default = GeminiProvider.from_env()
+    assert (default.timeout, default.fallback_model) == (15.0, "")
+    monkeypatch.setenv("GEMINI_TIMEOUT", "7.5")
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash")
+    configured = GeminiProvider.from_env()
+    assert (configured.timeout, configured.fallback_model) == (7.5, "gemini-3.5-flash")
+
+
+async def test_gemini_logs_model_and_timing_but_not_the_request(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="aibot.llm.gemini")
+    provider, _ = gemini_with([api_error(503), gemini_response(types.Part(text="ok"))], fallback_model="backup", retry_delay=0)
+    await provider.generate([Message("user", "secret question")], system="secret prompt")
+    text = caplog.text
+    assert "gemini-3.5-flash-lite failed with HTTP 503 after" in text
+    assert "retrying with backup in 0.0 s" in text
+    assert "Gemini backup answered in" in text
+    assert "secret" not in text
+
+
+def test_configure_logging_shows_app_info_logs_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    logger = logging.getLogger("aibot")
+    saved = (logger.handlers[:], logger.level, logger.propagate)
+    logger.handlers.clear()
+    try:
+        monkeypatch.setenv("LOG_LEVEL", "warning")
+        configure_logging()
+        configure_logging()  # a second call adds nothing
+        assert len(logger.handlers) == 1
+        assert logger.level == logging.WARNING and not logger.propagate
+        monkeypatch.delenv("LOG_LEVEL")
+        logger.handlers.clear()
+        configure_logging()
+        assert logger.level == logging.INFO
+    finally:
+        logger.handlers[:], logger.level, logger.propagate = saved  # type: ignore[assignment]
+        logger.setLevel(saved[1])
 
 
 def openai_provider(handler: Any, **kwargs: Any) -> OpenAICompatProvider:
